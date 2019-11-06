@@ -96,7 +96,8 @@ class VCRDataset(Dataset):
         tokenizer: BertTokenizer,
         padding_index: int = 0,
         max_seq_length: int = 40,
-        max_region_num: int = 60
+        max_region_num: int = 60,
+        debug=False
     ):
         # All the keys in `self._entries` would be present in `self._image_features_reader`
         if task == 'VCR_Q-A':
@@ -126,7 +127,10 @@ class VCRDataset(Dataset):
             os.makedirs(os.path.join(dataroot, "cache"))
 
         # cache file path data/cache/train_ques
-        cache_path = "data/VCR/cache/" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl"
+        if debug:
+            cache_path = "data/VCR/cache/"+ "debug_" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl"
+        else:
+            cache_path = "data/VCR/cache/" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl"
         if not os.path.exists(cache_path):
             self.tokenize()
             self.tensorize()

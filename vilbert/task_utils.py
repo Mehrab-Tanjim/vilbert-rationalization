@@ -26,7 +26,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
     features, spatials, image_mask, question, target, input_mask, segment_ids, co_attention_mask, question_id = batch
     batch_size = features.size(0)
 
-    if task_id in ['TASK2', 'TASK3', 'TASK5', 'TASK6', 'TASK7']:
+    if task_id in ['TASK1', 'TASK2', 'TASK3', 'TASK5', 'TASK6', 'TASK7']:
         max_num_bbox = features.size(1)
         num_options = question.size(1)
         features = features.unsqueeze(1).expand(batch_size, num_options, max_num_bbox, 2048).contiguous().view(-1, max_num_bbox, 2048)
@@ -86,7 +86,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
     features, spatials, image_mask, question, target, input_mask, segment_ids, co_attention_mask, question_id = batch
     batch_size = features.size(0)
 
-    if task_id in ['TASK2', 'TASK3', 'TASK5', 'TASK6', 'TASK7']:
+    if task_id in ['TASK1', 'TASK2', 'TASK3', 'TASK5', 'TASK6', 'TASK7']:
         max_num_bbox = features.size(1)
         num_options = question.size(1)
         features = features.unsqueeze(1).expand(batch_size, num_options, max_num_bbox, 2048).contiguous().view(-1, max_num_bbox, 2048)
@@ -149,7 +149,7 @@ def LoadLosses(args, task_cfg, task_ids):
 
     return losses
 
-def LoadDatasets(args, task_cfg, ids, split='trainval'):
+def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
 
     tokenizer = BertTokenizer.from_pretrained(
         args.bert_model, do_lower_case=True
@@ -207,6 +207,7 @@ def LoadDatasets(args, task_cfg, ids, split='trainval'):
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
                                 max_region_num=task_cfg[task]['max_region_num'],
+                                debug=debug
                                 )
 
         task_datasets_val[task] = None
@@ -221,7 +222,8 @@ def LoadDatasets(args, task_cfg, ids, split='trainval'):
                                 tokenizer=tokenizer, 
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
-                                max_region_num=task_cfg[task]['max_region_num'])
+                                max_region_num=task_cfg[task]['max_region_num'],
+                                debug=debug)
 
         task_num_iters[task] = 0
         task_batch_size[task] = 0

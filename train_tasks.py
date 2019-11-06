@@ -153,6 +153,15 @@ def main():
     parser.add_argument(
         "--compact", action="store_true", help="whether use compact vilbert model."
     )
+    parser.add_argument(
+        "--debug", action="store_true", help="whether use compact vilbert model."
+    )
+    parser.add_argument(
+        "--tensorboard_dir",
+        default="tensorboard_log",
+        type=str,
+        help="The output directory where the model checkpoints will be written.",
+    )
     args = parser.parse_args()
     with open('vlbert_tasks.yml', 'r') as f:
         task_cfg = edict(yaml.load(f))
@@ -191,6 +200,7 @@ def main():
         prefix = ''
     timeStamp = '-'.join(task_names) + '_' + args.config_file.split('/')[1].split('.')[0] + prefix
     savePath = os.path.join(args.output_dir, timeStamp)
+    logPath = os.path.join(args.tensorboard_dir, timeStamp)
 
     bert_weight_name = json.load(open("config/" + args.bert_model + "_weight_name.json", "r"))
 
@@ -230,10 +240,17 @@ def main():
             print('\n', file=f)
             print(config, file=f)
 
-    task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
-            task_dataloader_train, task_dataloader_val = LoadDatasets(args, task_cfg, args.tasks.split('-'))
+    # Done it for VCR Dataset only, need to put this train_100.jsonl for other datasets
+    if args.debug:
+        task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl']) 
+        task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl']) 
+        task_cfg[task]['batch_size'] = 2
 
-    tbLogger = utils.tbLogger(timeStamp, savePath, task_names, task_ids, task_num_iters, args.gradient_accumulation_steps)
+    # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
+    task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
+            task_dataloader_train, task_dataloader_val = LoadDatasets(args, task_cfg, args.tasks.split('-'), args.debug)
+
+    tbLogger = utils.tbLogger(logPath, savePath, task_names, task_ids, task_num_iters, args.gradient_accumulation_steps)
 
     # if n_gpu > 0:
         # torch.cuda.manual_seed_all(args.seed)
@@ -415,7 +432,7 @@ def main():
 
         if default_gpu:
             # Save a trained model
-            logger.info("** ** * Saving fine - tuned model on " + timeStamp + "** ** * ")
+            logger.info("** ** * Saving fine - tuned model on " + logPath + "** ** * ")
             model_to_save = (
                 model.module if hasattr(model, "module") else model
             )  # Only save the model it-self

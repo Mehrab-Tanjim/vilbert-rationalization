@@ -33,6 +33,8 @@ import _pickle as pickle
 import time
 import itertools
 # import skimage.io as io
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon, Rectangle

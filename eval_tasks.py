@@ -24,6 +24,8 @@ from vilbert.task_utils import LoadDatasetEval, LoadLosses, ForwardModelsTrain, 
 import vilbert.utils as utils
 import torch.distributed as dist
 
+from tqdm import tqdm
+
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
@@ -96,7 +98,7 @@ def main():
         help="save name for training.", 
     )
     parser.add_argument(
-        "--batch_size", default=1000, type=int, help="what is the batch size?"
+        "--batch_size", default=20, type=int, help="what is the batch size?"
     )
     parser.add_argument(
         "--tasks", default='', type=str, help="1-2-3... training task separate by -"
@@ -204,14 +206,14 @@ def main():
     for task_id in task_ids:
         results = []
         others = []
-        for i, batch in enumerate(task_dataloader_val[task_id]):
+        for i, batch in enumerate(tqdm(task_dataloader_val[task_id])):#, total=len(task_dataloader_val[task_id]), position=0, leave=True):
             loss, score, batch_size, results, others = EvaluatingModel(args, task_cfg, device, \
                     task_id, batch, model, task_dataloader_val, task_losses, results, others)
 
             tbLogger.step_val(0, float(loss), float(score), task_id, batch_size, 'val')
 
-            sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
-            sys.stdout.flush()
+            # sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
+            # sys.stdout.flush()
         # save the result or evaluate the result.
         ave_score = tbLogger.showLossVal()
 
