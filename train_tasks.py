@@ -154,13 +154,19 @@ def main():
         "--compact", action="store_true", help="whether use compact vilbert model."
     )
     parser.add_argument(
-        "--debug", action="store_true", help="whether use compact vilbert model."
+        "--debug", action="store_true", help="whether in debug mode."
     )
     parser.add_argument(
         "--tensorboard_dir",
         default="tensorboard_log",
         type=str,
-        help="The output directory where the model checkpoints will be written.",
+        help="The output directory where tensorboard log will be written.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        default=-1,
+        type=int,
+        help="Custom Batch size for task.",
     )
     args = parser.parse_args()
     with open('vlbert_tasks.yml', 'r') as f:
@@ -240,11 +246,18 @@ def main():
             print('\n', file=f)
             print(config, file=f)
 
+    if args.batch_size != -1:
+        for i, task_id in enumerate(args.tasks.split('-')):
+            task = 'TASK' + task_id
+            task_cfg[task]['batch_size'] = args.batch_size
+
     # Done it for VCR Dataset only, need to put this train_100.jsonl for other datasets
     if args.debug:
-        task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl']) 
-        task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl']) 
-        task_cfg[task]['batch_size'] = 2
+        for i, task_id in enumerate(args.tasks.split('-')):
+            task = 'TASK' + task_id
+            task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl']) 
+            task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl']) 
+            task_cfg[task]['batch_size'] = 2
 
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
