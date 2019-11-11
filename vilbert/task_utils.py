@@ -207,6 +207,7 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
                                 max_region_num=task_cfg[task]['max_region_num'],
+                                data_root=task_cfg[task]['dataroot'],
                                 debug=debug
                                 )
 
@@ -223,6 +224,7 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
                                 max_region_num=task_cfg[task]['max_region_num'],
+                                data_root=task_cfg[task]['dataroot'],
                                 debug=debug)
 
         task_num_iters[task] = 0

@@ -97,6 +97,7 @@ class VCRDataset(Dataset):
         padding_index: int = 0,
         max_seq_length: int = 40,
         max_region_num: int = 60,
+        data_root = 'data/VCR',
         debug=False
     ):
         # All the keys in `self._entries` would be present in `self._image_features_reader`
@@ -117,7 +118,7 @@ class VCRDataset(Dataset):
         self.num_labels = 1
 
         self._names = []
-        with open('data/VCR/unisex_names_table.csv') as csv_file:
+        with open(os.path.join(data_root, 'unisex_names_table.csv')) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=',')
             for row in csv_reader:
                 if row[1] != 'name':
@@ -128,9 +129,9 @@ class VCRDataset(Dataset):
 
         # cache file path data/cache/train_ques
         if debug:
-            cache_path = "data/VCR/cache/"+ "debug_" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl"
+            cache_path = os.path.join(data_root, "cache", "debug_" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
         else:
-            cache_path = "data/VCR/cache/" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl"
+            cache_path = os.path.join(data_root,"cache", split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
         if not os.path.exists(cache_path):
             self.tokenize()
             self.tensorize()

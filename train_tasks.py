@@ -168,6 +168,12 @@ def main():
         type=int,
         help="Custom Batch size for task.",
     )
+    parser.add_argument(
+        "--data_root",
+        default="",
+        type=str,
+        help="The data root of the task.",
+    )
     args = parser.parse_args()
     with open('vlbert_tasks.yml', 'r') as f:
         task_cfg = edict(yaml.load(f))
@@ -250,6 +256,16 @@ def main():
         for i, task_id in enumerate(args.tasks.split('-')):
             task = 'TASK' + task_id
             task_cfg[task]['batch_size'] = args.batch_size
+
+    if args.data_root != "":
+        for i, task_id in enumerate(args.tasks.split('-')):
+            data_root = args.data_root
+            task = 'TASK' + task_id
+            task_cfg[task]['dataroot'] = data_root
+            task_cfg[task]['features_h5path1'] = os.path.join(data_root ,task_cfg[task]['features_h5path1'].split('/')[-1])
+            task_cfg[task]['features_h5path2'] = os.path.join(data_root ,task_cfg[task]['features_h5path2'].split('/')[-1])
+            task_cfg[task]['train_annotations_jsonpath'] = os.path.join(data_root ,task_cfg[task]['train_annotations_jsonpath'].split('/')[-1])
+            task_cfg[task]['val_annotations_jsonpath'] = os.path.join(data_root ,task_cfg[task]['val_annotations_jsonpath'].split('/')[-1])
 
     # Done it for VCR Dataset only, need to put this train_100.jsonl for other datasets
     if args.debug:
