@@ -93,7 +93,8 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
                     is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
     context = torch.tensor(context, dtype=torch.float, device=device )
-    # context = context.unsqueeze(0).repeat(num_samples, 1)
+    context = context[0].unsqueeze(0)
+    context = context.unsqueeze(1)
     generated = context
     #TODO: added for getting the embedded representation
     # input_vec = model.transformer.wte(context)
@@ -107,6 +108,7 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
             # inputs = {'input_rep': input_vec}
             inputs = input_vec
             outputs = model(inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+            # next token only for 1 batch size, i.e. 1st training sample
             next_token_logits = outputs[0][0, -1, :] / (temperature if temperature > 0 else 1.)
 
             # reptition penalty from CTRL (https://arxiv.org/abs/1909.05858)
@@ -120,6 +122,7 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
             else:
                 next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
 
+            # Only for 1 batch size
             input_vec = torch.cat((input_vec, model.transformer.wte(next_token.unsqueeze(0))), dim=1)
 
             if generated is None:
@@ -146,9 +149,9 @@ def get_gpt2():
     model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
     model = model_class.from_pretrained(args.model_name_or_path)
-    return model, args
+    return model, args, tokenizer
 
-def generate_rationale(gpt2_inp, model, args):
+def generate_rationale(gpt2_inp, model, args, tokenizer):
 
     model.eval()
 

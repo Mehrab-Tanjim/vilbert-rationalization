@@ -1520,7 +1520,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
         self.config = config
         self.gpt2_embed_dim = 768
         self.embed = torch.nn.Linear(config.bi_hidden_size, self.gpt2_embed_dim)
-        self.gpt2, self.gpt2_args = get_gpt2()
+        self.gpt2, self.gpt2_args, self.tokenizer = get_gpt2()
 
     def set_device(self, device):
         self.gpt2_args.device=device
@@ -1582,7 +1582,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
         gpt2_inp = self.embed(gpt2_inp)
 
         # try:
-        generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args)
+        generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.tokenizer)
         # except:
         #     import pdb
         #     pdb.set_trace()
