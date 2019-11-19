@@ -50,8 +50,8 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit = \
-                                            model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask)
-    
+                                            model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
         loss = loss.mean() * target.size(1)
@@ -78,7 +78,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
     # reset the task iteration when needed.
     if task_count[task_id] % len(task_dataloader_train[task_id]) == 0:
         task_iter_train[task_id] = iter(task_dataloader_train[task_id])
-    
+
     task_count[task_id] += 1
     # get the batch
     batch = task_iter_train[task_id].next()
@@ -110,14 +110,14 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
 
     # get the model output
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit = \
-            model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask)
+            model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
     # for different task, we use different output to calculate the loss.
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
         loss = loss.mean() * target.size(1)
         batch_score = compute_score_with_logits(vil_prediction, target).sum() / float(batch_size)
-    
+
     elif task_cfg[task_id]['type'] == 'VL-logit':
         vil_logit = vil_logit.view(batch_size, num_options)
         loss = task_losses[task_id](vil_logit, target)
@@ -167,13 +167,13 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
     # initilzie the feature reader
     for features_h5path in task_feature_reader1.keys():
         if features_h5path != '':
-            task_feature_reader1[features_h5path] = ImageFeaturesH5Reader(features_h5path, 
+            task_feature_reader1[features_h5path] = ImageFeaturesH5Reader(features_h5path,
                                                                             args.in_memory)
-    
+
     for features_h5path in task_feature_reader2.keys():
         if features_h5path != '':
             task_feature_reader2[features_h5path] = ImageFeaturesH5Reader(features_h5path, args.in_memory)
-    
+
     task_datasets_train = {}
     task_datasets_val = {}
     task_dataloader_train = {}
@@ -185,15 +185,15 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
     for i, task_id in enumerate(ids):
         task = 'TASK' + task_id
         task_ids.append(task)
-        batch_size = task_cfg[task]['batch_size'] // args.gradient_accumulation_steps 
+        batch_size = task_cfg[task]['batch_size'] // args.gradient_accumulation_steps
         num_workers = args.num_workers
         if args.local_rank != -1:
             batch_size = int(batch_size / dist.get_world_size())
             num_workers = int(num_workers / dist.get_world_size())
-        
+
         # num_workers = int(num_workers / len(ids))
         logger.info("Loading %s Dataset with batch size %d" %(task_cfg[task]['name'], batch_size))
-        
+
         task_datasets_train[task] = None
         if 'train' in split:
             task_datasets_train[task] = DatasetMapTrain[task](
@@ -201,9 +201,9 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
                                 dataroot=task_cfg[task]['dataroot'],
                                 annotations_jsonpath=task_cfg[task]['train_annotations_jsonpath'],
                                 split=task_cfg[task]['train_split'],
-                                image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']], 
+                                image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']],
                                 gt_image_features_reader= task_feature_reader2[task_cfg[task]['features_h5path2']],
-                                tokenizer=tokenizer, 
+                                tokenizer=tokenizer,
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
                                 max_region_num=task_cfg[task]['max_region_num'],
@@ -218,9 +218,9 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
                                 dataroot=task_cfg[task]['dataroot'],
                                 annotations_jsonpath=task_cfg[task]['val_annotations_jsonpath'],
                                 split=task_cfg[task]['val_split'],
-                                image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']], 
+                                image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']],
                                 gt_image_features_reader= task_feature_reader2[task_cfg[task]['features_h5path2']],
-                                tokenizer=tokenizer, 
+                                tokenizer=tokenizer,
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
                                 max_region_num=task_cfg[task]['max_region_num'],
@@ -279,13 +279,13 @@ def LoadDatasetEval(args, task_cfg, ids):
     # initilzie the feature reader
     for features_h5path in task_feature_reader1.keys():
         if features_h5path != '':
-            task_feature_reader1[features_h5path] = ImageFeaturesH5Reader(features_h5path, 
+            task_feature_reader1[features_h5path] = ImageFeaturesH5Reader(features_h5path,
                                                                             args.in_memory)
-    
+
     for features_h5path in task_feature_reader2.keys():
         if features_h5path != '':
             task_feature_reader2[features_h5path] = ImageFeaturesH5Reader(features_h5path, args.in_memory)
-    
+
     task_datasets_val = {}
     task_dataloader_val = {}
     task_ids = []
@@ -298,7 +298,7 @@ def LoadDatasetEval(args, task_cfg, ids):
         batch_size =  args.batch_size
         if args.local_rank != -1:
             batch_size = int(batch_size / dist.get_world_size())
-        
+
         num_workers = int(args.num_workers / len(ids))
         logger.info("Loading %s Dataset with batch size %d" %(task_cfg[task]['name'], batch_size))
 
@@ -312,13 +312,13 @@ def LoadDatasetEval(args, task_cfg, ids):
                             dataroot=task_cfg[task]['dataroot'],
                             annotations_jsonpath=task_cfg[task]['val_annotations_jsonpath'],
                             split=eval_split,
-                            image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']], 
+                            image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']],
                             gt_image_features_reader= task_feature_reader2[task_cfg[task]['features_h5path2']],
-                            tokenizer=tokenizer, 
+                            tokenizer=tokenizer,
                             padding_index=0,
                             max_seq_length=task_cfg[task]['max_seq_length'],
                             max_region_num=task_cfg[task]['max_region_num'])
-        
+
         task_dataloader_val[task] = DataLoader(
             task_datasets_val[task],
             shuffle=False,
@@ -374,7 +374,7 @@ def EvaluatingModel(args, task_cfg, device, task_id, batch, model, task_dataload
 
     if task_cfg[task_id]['type'] == 'VL-classifier':
         logits = torch.max(vil_prediction, 1)[1].data  # argmax
-        sorted_score, sorted_idx = torch.sort(-vil_prediction) 
+        sorted_score, sorted_idx = torch.sort(-vil_prediction)
         topk = 8 # top candidate.
         topkInd = sorted_idx[:,:topk]
         loss = 0
@@ -382,17 +382,17 @@ def EvaluatingModel(args, task_cfg, device, task_id, batch, model, task_dataload
         for i in range(logits.size(0)):
             results.append({'question_id':question_id[i].item(), \
                     'answer':task_dataloader[task_id].dataset.label2ans[logits[i].item()]})
-            
+
             # save top 8 as options.
             others.append({'question_id':question_id[i].item(), \
                 'answer':[task_dataloader[task_id].dataset.label2ans[idx.item()] for idx in topkInd[i]]})
- 
+
     elif task_cfg[task_id]['type'] == 'VL-logit':
         vil_logit = vil_logit.view(batch_size, num_options)
         loss = task_losses[task_id](vil_logit, target)
         _, preds = torch.max(vil_logit, 1)
         batch_score = (preds == target).sum()
-        
+
         probs = torch.softmax(vil_logit, dim=1)
         for i in range(vil_logit.size(0)):
             results.append({'question_id':question_id[i].item(), 'answer':[prob.item() for prob in probs[i]]})
