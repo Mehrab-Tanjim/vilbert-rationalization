@@ -3,7 +3,8 @@ __pycache__/
 *.so
 
 # Data
-data/
+./data/*
+data/VCR
 
 # Results
 results/
