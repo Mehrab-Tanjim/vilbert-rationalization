@@ -54,6 +54,32 @@ def _load_annotationsQ_A(annotations_jsonpath, split):
 
     return entries
 
+def _load_annotationsQ_A_R(annotations_jsonpath, split):
+    """Build an index out of FOIL annotations, mapping each image ID with its corresponding captions."""
+    entries = []
+    with open(annotations_jsonpath, 'rb') as f: # opening file in binary(rb) mode    
+        for annotation in json_lines.reader(f):
+            # metadata_fn = json.load(open(os.path.join('data/VCR/vcr1images', annotation["metadata_fn"]), 'r'))
+            # det_names = metadata_fn["names"]
+            det_names = ""
+            question = annotation["question"]
+            if split == 'test':
+                ans_label = 0
+                ra_label = 0 #TODO: should be the same from QA_R
+            else:
+                ans_label = annotation["answer_label"]
+                ra_label =  annotation["rationale_label"] #TODO: should be the same from QA_R
+
+            img_id = _converId(annotation["img_id"])
+            anno_id = int(annotation["annot_id"].split('-')[1])
+            entries.append(
+                {"question": question, 'answers':annotation["answer_choices"],
+                 'rationale':annotation["rationale_choices"][ra_label],  "metadata_fn": annotation["metadata_fn"], 
+                 'target':ans_label, 'img_id':img_id, 'anno_id':anno_id}
+            )
+
+    return entries
+
 def _load_annotationsQA_R(annotations_jsonpath, split):
     """Build an index out of FOIL annotations, mapping each image ID with its corresponding captions."""
     entries = []
@@ -98,11 +124,15 @@ class VCRDataset(Dataset):
         max_seq_length: int = 40,
         max_region_num: int = 60,
         data_root = 'data/VCR',
-        debug=False
+        debug=False,
+        rationale=True 
     ):
         # All the keys in `self._entries` would be present in `self._image_features_reader`
         if task == 'VCR_Q-A':
-            self._entries = _load_annotationsQ_A(annotations_jsonpath, split)
+            if rationale:
+                self._entries = _load_annotationsQ_A_R(annotations_jsonpath, split)
+            else:
+                self._entries = _load_annotationsQ_A(annotations_jsonpath, split)
         elif task == "VCR_QA-R":
             self._entries = _load_annotationsQA_R(annotations_jsonpath, split)
         else:
@@ -116,6 +146,7 @@ class VCRDataset(Dataset):
         self._max_caption_length = max_seq_length
         self._max_region_num = max_region_num
         self.num_labels = 1
+        self._rationale = rationale
 
         self._names = []
         with open(os.path.join(data_root, 'unisex_names_table.csv')) as csv_file:
@@ -128,16 +159,24 @@ class VCRDataset(Dataset):
             os.makedirs(os.path.join(dataroot, "cache"))
 
         # cache file path data/cache/train_ques
-        if debug:
-            cache_path = os.path.join(data_root, "cache", "debug_" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
+        if rationale:
+            if debug:
+                cache_path = os.path.join(data_root, "cache", "debug_" + split + '_' + task + "_rationale_"  + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
+            else:
+                cache_path = os.path.join(data_root,"cache", split + '_' + task +  "_rationale_"  + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
         else:
-            cache_path = os.path.join(data_root,"cache", split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
+            if debug:
+                cache_path = os.path.join(data_root, "cache", "debug_" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
+            else:
+                cache_path = os.path.join(data_root,"cache", split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
+            
         if not os.path.exists(cache_path):
             self.tokenize()
             self.tensorize()
             cPickle.dump(self._entries, open(cache_path, 'wb'))
         else:
             self._entries = cPickle.load(open(cache_path, "rb"))
+                
 
     def tokenize(self):
         """Tokenizes the captions.
@@ -207,6 +246,42 @@ class VCRDataset(Dataset):
             entry["input_mask"] = input_mask_all
             entry["segment_ids"] = segment_ids_all
 
+            if self._rationale:
+                tokens_r, mask_r = self.replace_det_with_name(entry["rationale"], random_names, rationale=True)
+
+                self._truncate_rationale_seq(tokens_r, mask_r, 3*(self._max_caption_length//4) - 3)
+
+                tokens = []
+                segment_ids = []
+                # tokens.append("[CLS]")
+                # segment_ids.append(0)
+                    
+                for token in tokens_r:
+                    tokens.append(token)
+                    segment_ids.append(0)
+
+                input_ids = self.gpt2_tokenizer.convert_tokens_to_ids(tokens)
+                co_attention_mask = [-1] + mask_r + [-1]
+
+                input_mask = [1] * len(input_ids)
+                # Zero-pad up to the sequence length.
+                while len(input_ids) < 3*(self._max_caption_length//4): #TODO not same as global maximum
+                    input_ids.append(0)
+                    input_mask.append(0)
+                    segment_ids.append(0)
+                    co_attention_mask.append(-1)
+
+                assert len(input_ids) == self._max_caption_length
+                assert len(input_mask) == self._max_caption_length
+                assert len(segment_ids) == self._max_caption_length
+
+                  
+
+                entry["rationale_co_attention_mask"] = co_attention_mask
+                entry["rationale_input_ids"] = input_ids
+                entry["rationale_input_mask"] = input_mask
+                entry["rationale_segment_ids"] = segment_ids   
+
             sys.stdout.write('%d/%d\r' % (count, len(self._entries)))
             sys.stdout.flush()
             count += 1
@@ -234,20 +309,26 @@ class VCRDataset(Dataset):
 
         return random_name
 
-    def replace_det_with_name(self, inputs, random_names):
+    def replace_det_with_name(self, inputs, random_names, rationale=True):
         tokens = []
         mask = []
         for w in inputs:
             if isinstance(w, str):
                 word = w
                 det = -1
-                word_token = self._tokenizer.tokenize(word)
+                if rationale:
+                    word_token = self.gpt2_tokenizer.tokenize(word)
+                else:
+                    word_token = self._tokenizer.tokenize(word)
                 mask += [det] * len(word_token)
                 tokens += word_token
             else:
                 for idx in w:
                     word = random_names[idx]
-                    word_token = self._tokenizer.tokenize(word)
+                    if rationale:
+                        word_token = self.gpt2_tokenizer.tokenize(word)
+                    else:
+                        word_token = self._tokenizer.tokenize(word)
                     mask += [idx] * len(word_token)
                     tokens += word_token
 
@@ -270,6 +351,20 @@ class VCRDataset(Dataset):
             else:
                 tokens_b.pop()
                 mask_b.pop()
+
+    def _truncate_rationale_seq(self, tokens_r, mask_r, max_length):
+        """Truncates a sequence pair in place to the maximum length."""
+
+        # This is a simple heuristic which will always truncate the longer sequence
+        # one token at a time. This makes more sense than truncating an equal percent
+        # of tokens from each, since if one sequence is very short then each token
+        # that's truncated likely contains more information than a longer sequence.
+        while True:
+            total_length = len(tokens_r) #+ len(tokens_b)
+            if total_length <= max_length:
+                break
+            tokens_r.pop()
+            mask_r.pop()
 
     def __getitem__(self, index):
         
