@@ -141,6 +141,7 @@ class VCRDataset(Dataset):
         self._image_features_reader = image_features_reader
         self._gt_image_features_reader = gt_image_features_reader
         self._tokenizer = tokenizer
+        self.gpt2_tokenizer = tokenizer #TODO change here
 
         self._padding_index = padding_index
         self._max_caption_length = max_seq_length
@@ -298,6 +299,15 @@ class VCRDataset(Dataset):
             segment_ids = torch.from_numpy(np.array(entry["segment_ids"]))
             entry["segment_ids"] = segment_ids
 
+            input_ids = torch.from_numpy(np.array(entry["rationale_input_ids"]))
+            entry["rationale_input_ids"] = input_ids
+
+            input_mask = torch.from_numpy(np.array(entry["rationale_input_mask"]))
+            entry["rationale_input_mask"] = input_mask
+
+            segment_ids = torch.from_numpy(np.array(entry["rationale_segment_ids"]))
+            entry["rationale_segment_ids"] = segment_ids 
+
     def generate_random_name(self, det_names):
         random_name = []
         for name in det_names:
@@ -416,6 +426,7 @@ class VCRDataset(Dataset):
         spatials = torch.tensor(mix_boxes_pad).float()
 
         input_ids = entry["input_ids"]
+        rationale_input_ids = entry["rationale_input_ids"]
         input_mask = entry["input_mask"]
         segment_ids = entry["segment_ids"]
         target = int(entry["target"])
@@ -434,7 +445,7 @@ class VCRDataset(Dataset):
                 if idx != -1 and idx+num_box_preserve < self._max_region_num:
                     co_attention_mask[ii, idx+num_box_preserve, jj] = 1
 
-        return features, spatials, image_mask, input_ids, target, input_mask, segment_ids, co_attention_mask, anno_id
+        return features, spatials, image_mask, input_ids, rationale_input_ids, target, input_mask, segment_ids, co_attention_mask, anno_id
 
     def __len__(self):
         return len(self._entries)
