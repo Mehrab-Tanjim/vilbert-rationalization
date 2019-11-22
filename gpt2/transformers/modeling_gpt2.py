@@ -371,13 +371,17 @@ class GPT2Model(GPT2PreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.h[layer].attn.prune_heads(heads)
 
-    def forward(self, input_rep, past=None, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None):
-        input_shape = input_rep.size()
-        # input_ids = input_ids.view(-1, input_shape[-1])
+    def forward(self, inputs, past=None, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None):
+        ans_rep, rat_txt = inputs
+        input_ids = rat_txt
+        input_shape = input_ids.size()
+        input_ids = input_ids.view(-1, input_shape[-1])
+        inp_ext_seq_len = input_shape[-1] + 1
+
         if token_type_ids is not None:
-            token_type_ids = token_type_ids.view(-1, input_shape[-2]) #B x T x C
+            token_type_ids = token_type_ids.view(-1, inp_ext_seq_len) #B x T x C
         if position_ids is not None:
-            position_ids = position_ids.view(-1, input_shape[-2])
+            position_ids = position_ids.view(-1, inp_ext_seq_len)
 
         if past is None:
             past_length = 0
@@ -385,8 +389,8 @@ class GPT2Model(GPT2PreTrainedModel):
         else:
             past_length = past[0][0].size(-2)
         if position_ids is None:
-            position_ids = torch.arange(past_length, input_rep.size(-2) + past_length, dtype=torch.long, device=input_rep.device)
-            position_ids = position_ids.unsqueeze(0).expand(input_shape[:-1]) #TODO changed here, everything except the last one
+            position_ids = torch.arange(past_length, input_shape.size[-1] + past_length, dtype=torch.long, device=input_ids.device)
+            position_ids = position_ids.unsqueeze(0).view(-1, inp_ext_seq_len)
 
         # Attention mask.
         if attention_mask is not None:
@@ -420,13 +424,15 @@ class GPT2Model(GPT2PreTrainedModel):
         else:
             head_mask = [None] * self.config.n_layer
 
-        # input_rep = self.wte(input_ids)
+        input_embeds  = self.wte(input_ids)
         position_embeds = self.wpe(position_ids)
         if token_type_ids is not None:
             token_type_embeds = self.wte(token_type_ids)
         else:
             token_type_embeds = 0
-        hidden_states = input_rep + position_embeds + token_type_embeds
+        ans_rep = ans_rep.unsqueeze(1)
+        inp_embeds_w_ans_rep = torch.cat((ans_rep, input_embeds), 1)
+        hidden_states = inp_embeds_w_ans_rep + position_embeds + token_type_embeds
         hidden_states = self.drop(hidden_states)
 
         output_shape = input_shape # + (hidden_states.size(-1),)
@@ -526,9 +532,9 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         self._tie_or_clone_weights(self.lm_head,
                                    self.transformer.wte)
 
-    def forward(self, input_rep, past=None, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
+    def forward(self, inputs, past=None, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
                 labels=None):
-        transformer_outputs = self.transformer(input_rep,
+        transformer_outputs = self.transformer(inputs,
                                                past=past,
                                                attention_mask=attention_mask,
                                                token_type_ids=token_type_ids,
@@ -542,7 +548,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         if labels is not None:
             # Shift so that tokens < n predict n
             shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
+            shift_labels = labels
             # Flatten the tokens
             loss_fct = CrossEntropyLoss(ignore_index=-1)
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)),

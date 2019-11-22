@@ -35,6 +35,7 @@ from torch.nn.utils.weight_norm import weight_norm
 from .utils import cached_path
 import pdb
 from vilbert.gpt2_rationale import get_gpt2, generate_rationale
+from transformers import GPT2Config, GPT2LMHeadModel
 
 logger = logging.getLogger(__name__)
 
@@ -1520,7 +1521,8 @@ class VILBertForVLTasks(BertPreTrainedModel):
         self.config = config
         self.gpt2_embed_dim = 768
         self.embed = torch.nn.Linear(config.bi_hidden_size, self.gpt2_embed_dim)
-        self.gpt2, self.gpt2_args, self.tokenizer = get_gpt2()
+        gpt2_config = GPT2Config.from_pretrained('gpt2')
+        self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=gpt2_config)
 
     def set_device(self, device):
         self.gpt2_args.device=device
@@ -1530,12 +1532,15 @@ class VILBertForVLTasks(BertPreTrainedModel):
         input_txt,
         input_imgs,
         image_loc,
+        rationale_text_label,
         token_type_ids=None,
         attention_mask=None,
         image_attention_mask=None,
         co_attention_mask=None,
         output_all_encoded_layers=False,
-        num_options=0
+        num_options=0,
+        train=True,
+        gpt2_tokenizer=None
     ):
         sequence_output_t, sequence_output_v, pooled_output_t, pooled_output_v, _ = self.bert(
             input_txt,
@@ -1580,15 +1585,18 @@ class VILBertForVLTasks(BertPreTrainedModel):
         pooled_output_per_options = pooled_output.view(-1, num_options, self.config.bi_hidden_size)
         gpt2_inp = torch.einsum('ba,bad->bd', (vil_probs, pooled_output_per_options))
         gpt2_inp = self.embed(gpt2_inp)
+        gpt2_inputs = (gpt2_inp, rationale_text_label)
+        gpt2_outputs = self.gpt2_model(gpt_inps, labels=rationale_text_label)
+        gpt2_loss = gpt2_outputs[0]
 
         # try:
-        generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.tokenizer)
+        # generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.tokenizer)
         # except:
         #     import pdb
         #     pdb.set_trace()
 
 
-        return vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit
+        return vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss
 
 class SimpleClassifier(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim, dropout):

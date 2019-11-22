@@ -13,6 +13,7 @@ from torch.utils.data.distributed import DistributedSampler
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from vilbert.datasets import DatasetMapTrain, DatasetMapEval
 from vilbert.datasets._image_features_reader import ImageFeaturesH5Reader
+from transformers import GPT2Tokenizer
 import pdb
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 LossMap = {'BCEWithLogitLoss': nn.BCEWithLogitsLoss(reduction='mean'),
            'CrossEntropyLoss': nn.CrossEntropyLoss(),
             }
+
+# Use tokenizer.max_len_single_sentence for max sequence legth for gpt2
+# Also, remember that there's no start token prepended automatically.
+gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', do_lower_case=True)
 
 def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses):
     batch = tuple(t.cuda(device=device, non_blocking=True) for t in batch)
@@ -49,7 +54,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
         segment_ids = segment_ids.view(-1, segment_ids.size(2))
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
-    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit = \
+    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
                                             model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
     if task_cfg[task_id]['type'] == 'VL-classifier':
@@ -109,7 +114,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     # get the model output
-    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit = \
+    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
             model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
     # for different task, we use different output to calculate the loss.

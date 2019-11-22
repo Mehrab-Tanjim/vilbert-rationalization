@@ -1,4 +1,2 @@
-def Settings( **kwargs ):
-    return {
-            'interpreter_path': '/opt/conda/bin/python'
-        }
+def Settings(**kwargs):
+    return { 'Interpreter_path': '/home/mehrab/.conda/envs/vilbert/bin/python'}
