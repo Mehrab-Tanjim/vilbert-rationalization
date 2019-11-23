@@ -28,7 +28,7 @@ gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', do_lower_case=True)
 
 def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses):
     batch = tuple(t.cuda(device=device, non_blocking=True) for t in batch)
-    features, spatials, image_mask, question, target, input_mask, segment_ids, co_attention_mask, question_id = batch
+    features, spatials, image_mask, question, rationale, target, input_mask, segment_ids, co_attention_mask, question_id = batch
     batch_size = features.size(0)
 
     if task_id in ['TASK1', 'TASK2', 'TASK3', 'TASK5', 'TASK6', 'TASK7']:
@@ -55,7 +55,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
-                                            model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+                                            model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
@@ -88,7 +88,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
     # get the batch
     batch = task_iter_train[task_id].next()
     batch = tuple(t.cuda(device=device, non_blocking=True) for t in batch)
-    features, spatials, image_mask, question, target, input_mask, segment_ids, co_attention_mask, question_id = batch
+    features, spatials, image_mask, question, rationale, target, input_mask, segment_ids, co_attention_mask, question_id = batch
     batch_size = features.size(0)
 
     if task_id in ['TASK1', 'TASK2', 'TASK3', 'TASK5', 'TASK6', 'TASK7']:
@@ -115,7 +115,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
 
     # get the model output
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
-            model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+            model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
     # for different task, we use different output to calculate the loss.
     if task_cfg[task_id]['type'] == 'VL-classifier':
