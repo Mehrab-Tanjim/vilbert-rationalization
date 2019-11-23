@@ -306,7 +306,6 @@ def main():
             )
 
     task_losses = LoadLosses(args, task_cfg, args.tasks.split('-'))
-    model.set_device(device)
     model.to(device)
     if args.local_rank != -1:
         try:

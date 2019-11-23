@@ -376,7 +376,9 @@ class GPT2Model(GPT2PreTrainedModel):
         input_ids = rat_txt
         input_shape = input_ids.size()
         input_ids = input_ids.view(-1, input_shape[-1])
-        inp_ext_seq_len = input_shape[-1] + 1
+        input_shape = list(input_shape)
+        input_shape[-1] = input_shape[-1] + 1
+        input_shape = torch.Size(input_shape)
 
         if token_type_ids is not None:
             token_type_ids = token_type_ids.view(-1, inp_ext_seq_len) #B x T x C
@@ -389,12 +391,12 @@ class GPT2Model(GPT2PreTrainedModel):
         else:
             past_length = past[0][0].size(-2)
         if position_ids is None:
-            position_ids = torch.arange(past_length, input_shape.size[-1] + past_length, dtype=torch.long, device=input_ids.device)
-            position_ids = position_ids.unsqueeze(0).view(-1, inp_ext_seq_len)
+            position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=input_ids.device)
+            position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
 
         # Attention mask.
         if attention_mask is not None:
-            attention_mask = attention_mask.view(-1, input_shape[-2])
+            attention_mask = attention_mask.view(-1, input_shape[-1])
             # We create a 3D attention mask from a 2D tensor mask.
             # Sizes are [batch_size, 1, 1, to_seq_length]
             # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
@@ -431,11 +433,12 @@ class GPT2Model(GPT2PreTrainedModel):
         else:
             token_type_embeds = 0
         ans_rep = ans_rep.unsqueeze(1)
+        input_embeds = input_embeds + ans_rep
         inp_embeds_w_ans_rep = torch.cat((ans_rep, input_embeds), 1)
         hidden_states = inp_embeds_w_ans_rep + position_embeds + token_type_embeds
         hidden_states = self.drop(hidden_states)
 
-        output_shape = input_shape # + (hidden_states.size(-1),)
+        output_shape = input_shape + (hidden_states.size(-1),)
 
         presents = ()
         all_attentions = []
@@ -470,7 +473,7 @@ class GPT2Model(GPT2PreTrainedModel):
             outputs = outputs + (all_hidden_states,)
         if self.output_attentions:
             # let the number of heads free (-1) so we can extract attention even after head pruning
-            attention_output_shape = input_shape[:-2] + (-1,) + all_attentions[0].shape[-2:]
+            attention_output_shape = input_shape[:-1] + (-1,) + all_attentions[0].shape[-2:]
             all_attentions = tuple(t.view(*attention_output_shape) for t in all_attentions)
             outputs = outputs + (all_attentions,)
         return outputs  # last hidden state, (presents), (all hidden_states), (attentions)

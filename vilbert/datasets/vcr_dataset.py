@@ -24,9 +24,9 @@ def _converId(img_id):
     if 'train' in img_id[0]:
         new_id = int(img_id[1])
     elif 'val' in img_id[0]:
-        new_id = int(img_id[1]) + 1000000        
+        new_id = int(img_id[1]) + 1000000
     elif 'test' in img_id[0]:
-        new_id = int(img_id[1]) + 2000000    
+        new_id = int(img_id[1]) + 2000000
     else:
         pdb.set_trace()
 
@@ -36,7 +36,7 @@ def _converId(img_id):
 def _load_annotationsQ_A(annotations_jsonpath, split):
     """Build an index out of FOIL annotations, mapping each image ID with its corresponding captions."""
     entries = []
-    with open(annotations_jsonpath, 'rb') as f: # opening file in binary(rb) mode    
+    with open(annotations_jsonpath, 'rb') as f: # opening file in binary(rb) mode
         for annotation in json_lines.reader(f):
             # metadata_fn = json.load(open(os.path.join('data/VCR/vcr1images', annotation["metadata_fn"]), 'r'))
             # det_names = metadata_fn["names"]
@@ -57,7 +57,7 @@ def _load_annotationsQ_A(annotations_jsonpath, split):
 def _load_annotationsQ_A_R(annotations_jsonpath, split):
     """Build an index out of FOIL annotations, mapping each image ID with its corresponding captions."""
     entries = []
-    with open(annotations_jsonpath, 'rb') as f: # opening file in binary(rb) mode    
+    with open(annotations_jsonpath, 'rb') as f: # opening file in binary(rb) mode
         for annotation in json_lines.reader(f):
             # metadata_fn = json.load(open(os.path.join('data/VCR/vcr1images', annotation["metadata_fn"]), 'r'))
             # det_names = metadata_fn["names"]
@@ -74,7 +74,7 @@ def _load_annotationsQ_A_R(annotations_jsonpath, split):
             anno_id = int(annotation["annot_id"].split('-')[1])
             entries.append(
                 {"question": question, 'answers':annotation["answer_choices"],
-                 'rationale':annotation["rationale_choices"][ra_label],  "metadata_fn": annotation["metadata_fn"], 
+                 'rationale':annotation["rationale_choices"][ra_label],  "metadata_fn": annotation["metadata_fn"],
                  'target':ans_label, 'img_id':img_id, 'anno_id':anno_id}
             )
 
@@ -83,14 +83,14 @@ def _load_annotationsQ_A_R(annotations_jsonpath, split):
 def _load_annotationsQA_R(annotations_jsonpath, split):
     """Build an index out of FOIL annotations, mapping each image ID with its corresponding captions."""
     entries = []
-    with open(annotations_jsonpath, 'rb') as f: # opening file in binary(rb) mode    
+    with open(annotations_jsonpath, 'rb') as f: # opening file in binary(rb) mode
         for annotation in json_lines.reader(f):
             # metadata_fn = json.load(open(os.path.join('data/VCR/vcr1images', annotation["metadata_fn"]), 'r'))
             # det_names = metadata_fn["names"]
             if split == 'test':
                 # for each answer
                 for answer in annotation["answer_choices"]:
-                    question = annotation["question"] + ["[SEP]"] + answer   
+                    question = annotation["question"] + ["[SEP]"] + answer
                     img_id = _converId(annotation["img_id"])
                     ans_label = 0
                     anno_id = int(annotation["annot_id"].split('-')[1])
@@ -99,7 +99,7 @@ def _load_annotationsQA_R(annotations_jsonpath, split):
                     )
             else:
                 det_names = ""
-                question = annotation["question"] + ["[SEP]"] + annotation["answer_choices"][annotation['answer_label']]    
+                question = annotation["question"] + ["[SEP]"] + annotation["answer_choices"][annotation['answer_label']]
                 ans_label = annotation["rationale_label"]
                 # img_fn = annotation["img_fn"]
                 img_id = _converId(annotation["img_id"])
@@ -125,7 +125,7 @@ class VCRDataset(Dataset):
         max_region_num: int = 60,
         data_root = 'data/VCR',
         debug=False,
-        rationale=True 
+        rationale=True
     ):
         # All the keys in `self._entries` would be present in `self._image_features_reader`
         if task == 'VCR_Q-A':
@@ -170,14 +170,14 @@ class VCRDataset(Dataset):
                 cache_path = os.path.join(data_root, "cache", "debug_" + split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
             else:
                 cache_path = os.path.join(data_root,"cache", split + '_' + task + "_" + str(max_seq_length) + "_" + str(max_region_num) + "_vcr.pkl")
-            
+
         if not os.path.exists(cache_path):
             self.tokenize()
             self.tensorize()
             cPickle.dump(self._entries, open(cache_path, 'wb'))
         else:
             self._entries = cPickle.load(open(cache_path, "rb"))
-                
+
 
     def tokenize(self):
         """Tokenizes the captions.
@@ -192,7 +192,7 @@ class VCRDataset(Dataset):
             random_names = self.generate_random_name(det_names)
             # replace with name
             tokens_a, mask_a = self.replace_det_with_name(entry["question"], random_names)
-            
+
             input_ids_all = []
             co_attention_mask_all = []
             input_mask_all = []
@@ -207,7 +207,7 @@ class VCRDataset(Dataset):
                 segment_ids = []
                 tokens.append("[CLS]")
                 segment_ids.append(0)
-                    
+
                 for token in tokens_a:
                     tokens.append(token)
                     segment_ids.append(0)
@@ -241,22 +241,23 @@ class VCRDataset(Dataset):
                 input_ids_all.append(input_ids)
                 input_mask_all.append(input_mask)
                 segment_ids_all.append(segment_ids)
-            
+
             entry["co_attention_mask"] = co_attention_mask_all
             entry["input_ids"] = input_ids_all
             entry["input_mask"] = input_mask_all
             entry["segment_ids"] = segment_ids_all
 
             if self._rationale:
+                self._max_caption_rat_length = 3 * (self._max_caption_length//4)
                 tokens_r, mask_r = self.replace_det_with_name(entry["rationale"], random_names, rationale=True)
 
-                self._truncate_rationale_seq(tokens_r, mask_r, 3*(self._max_caption_length//4) - 3)
+                self._truncate_rationale_seq(tokens_r, mask_r, self._max_caption_rat_length - 3)
 
                 tokens = []
                 segment_ids = []
                 # tokens.append("[CLS]")
                 # segment_ids.append(0)
-                    
+
                 for token in tokens_r:
                     tokens.append(token)
                     segment_ids.append(0)
@@ -266,22 +267,20 @@ class VCRDataset(Dataset):
 
                 input_mask = [1] * len(input_ids)
                 # Zero-pad up to the sequence length.
-                while len(input_ids) < 3*(self._max_caption_length//4): #TODO not same as global maximum
+                while len(input_ids) < self._max_caption_rat_length: #TODO not same as global maximum
                     input_ids.append(0)
                     input_mask.append(0)
                     segment_ids.append(0)
                     co_attention_mask.append(-1)
 
-                assert len(input_ids) == self._max_caption_length
-                assert len(input_mask) == self._max_caption_length
-                assert len(segment_ids) == self._max_caption_length
-
-                  
+                assert len(input_ids) == self._max_caption_rat_length
+                assert len(input_mask) == self._max_caption_rat_length
+                assert len(segment_ids) == self._max_caption_rat_length
 
                 entry["rationale_co_attention_mask"] = co_attention_mask
                 entry["rationale_input_ids"] = input_ids
                 entry["rationale_input_mask"] = input_mask
-                entry["rationale_segment_ids"] = segment_ids   
+                entry["rationale_segment_ids"] = segment_ids
 
             sys.stdout.write('%d/%d\r' % (count, len(self._entries)))
             sys.stdout.flush()
@@ -306,7 +305,7 @@ class VCRDataset(Dataset):
             entry["rationale_input_mask"] = input_mask
 
             segment_ids = torch.from_numpy(np.array(entry["rationale_segment_ids"]))
-            entry["rationale_segment_ids"] = segment_ids 
+            entry["rationale_segment_ids"] = segment_ids
 
     def generate_random_name(self, det_names):
         random_name = []
@@ -377,7 +376,7 @@ class VCRDataset(Dataset):
             mask_r.pop()
 
     def __getitem__(self, index):
-        
+
         entry = self._entries[index]
 
         image_id = entry["img_id"]
@@ -391,7 +390,7 @@ class VCRDataset(Dataset):
         # merge two features.
         features[0] = (features[0] * num_boxes + gt_features[0] * gt_num_boxes) / (num_boxes + gt_num_boxes)
 
-        # merge two boxes, and assign the labels. 
+        # merge two boxes, and assign the labels.
         gt_boxes = gt_boxes[1:gt_num_boxes]
         gt_features = gt_features[1:gt_num_boxes]
         gt_num_boxes = gt_num_boxes - 1
@@ -400,7 +399,7 @@ class VCRDataset(Dataset):
         gt_boxes = gt_boxes[:gt_box_preserve]
         gt_features = gt_features[:gt_box_preserve]
         gt_num_boxes = gt_box_preserve
- 
+
         num_box_preserve = min(self._max_region_num - int(gt_num_boxes), int(num_boxes))
         boxes = boxes[:num_box_preserve]
         features = features[:num_box_preserve]
@@ -409,7 +408,7 @@ class VCRDataset(Dataset):
         mix_boxes = np.concatenate((boxes, gt_boxes), axis=0)
         mix_features = np.concatenate((features, gt_features), axis=0)
         mix_num_boxes = num_box_preserve + int(gt_num_boxes)
-        
+
         image_mask = [1] * (mix_num_boxes)
         while len(image_mask) < self._max_region_num:
             image_mask.append(0)

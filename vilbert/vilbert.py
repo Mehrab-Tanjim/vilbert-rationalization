@@ -1524,9 +1524,6 @@ class VILBertForVLTasks(BertPreTrainedModel):
         gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=gpt2_config)
 
-    def set_device(self, device):
-        self.gpt2_args.device=device
-
     def forward(
         self,
         input_txt,
@@ -1586,7 +1583,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
         gpt2_inp = torch.einsum('ba,bad->bd', (vil_probs, pooled_output_per_options))
         gpt2_inp = self.embed(gpt2_inp)
         gpt2_inputs = (gpt2_inp, rationale_text_label)
-        gpt2_outputs = self.gpt2_model(gpt_inps, labels=rationale_text_label)
+        gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
         gpt2_loss = gpt2_outputs[0]
 
         # try:
