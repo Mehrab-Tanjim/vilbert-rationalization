@@ -9,7 +9,17 @@
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "args": [
+                "--bert_model", "bert-base-uncased",
+                "--from_pretrained", "save/pytorch_model_9.bin",
+                "--config_file", "config/bert_base_6layer_6conect.json",
+                "--learning_rate", "2e-5",
+                "--num_workers", "2",
+                "--tasks", "1-2",
+                "--save_name", "chk", 
+                "--debug"
+            ]
         }
     ]
 }
