@@ -446,8 +446,6 @@ def main():
         # when run evaluate, we run each task sequentially.
         for task_id in task_ids:
             for i, batch in enumerate(task_dataloader_val[task_id]):
-                import pdb
-                pdb.set_trace()
                 loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
                 tbLogger.step_val(epochId, float(loss), float(score), task_id, batch_size, 'val')
                 if default_gpu:

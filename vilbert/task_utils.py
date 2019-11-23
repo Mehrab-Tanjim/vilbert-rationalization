@@ -67,6 +67,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
         loss = task_losses[task_id](vil_logit, target)
         _, preds = torch.max(vil_logit, 1)
         batch_score = (preds == target).sum()
+        loss = loss + gpt2_loss
 
     elif task_cfg[task_id]['type'] == 'V-logit':
         loss = task_losses[task_id](vision_logit, target)
@@ -129,6 +130,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
         _, preds = torch.max(vil_logit, 1)
         batch_score = float((preds == target).sum()) / float(batch_size)
         loss = task_losses[task_id](vil_logit, target)
+        loss = loss + gpt2_loss
 
     elif task_cfg[task_id]['type'] == 'V-logit':
         loss = task_losses[task_id](vision_logit, target)
