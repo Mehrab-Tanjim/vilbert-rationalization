@@ -120,6 +120,7 @@ class VCRDataset(Dataset):
         image_features_reader: ImageFeaturesH5Reader,
         gt_image_features_reader: ImageFeaturesH5Reader,
         tokenizer: BertTokenizer,
+        gpt2_tokenizer,
         padding_index: int = 0,
         max_seq_length: int = 40,
         max_region_num: int = 60,
@@ -141,7 +142,7 @@ class VCRDataset(Dataset):
         self._image_features_reader = image_features_reader
         self._gt_image_features_reader = gt_image_features_reader
         self._tokenizer = tokenizer
-        self.gpt2_tokenizer = tokenizer #TODO change here
+        self.gpt2_tokenizer = gpt2_tokenizer #TODO change here
 
         self._padding_index = padding_index
         self._max_caption_length = max_seq_length

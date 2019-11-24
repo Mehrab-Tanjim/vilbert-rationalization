@@ -34,7 +34,7 @@ from torch.nn.utils.weight_norm import weight_norm
 
 from .utils import cached_path
 import pdb
-from vilbert.gpt2_rationale import get_gpt2, generate_rationale
+from vilbert.gpt2_rationale import get_gpt2, sample_sequence, generate_rationale
 from transformers import GPT2Config, GPT2LMHeadModel
 
 logger = logging.getLogger(__name__)
@@ -1523,6 +1523,9 @@ class VILBertForVLTasks(BertPreTrainedModel):
         self.embed = torch.nn.Linear(config.bi_hidden_size, self.gpt2_embed_dim)
         gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=gpt2_config)
+    
+    def assign_tockenizer(self, gpt2_tokenizer):
+        self.gpt2_tokenizer = gpt2_tokenizer
 
     def forward(
         self,
@@ -1537,7 +1540,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
         output_all_encoded_layers=False,
         num_options=0,
         train=True,
-        gpt2_tokenizer=None
+        generate = False
     ):
         sequence_output_t, sequence_output_v, pooled_output_t, pooled_output_v, _ = self.bert(
             input_txt,
@@ -1586,6 +1589,25 @@ class VILBertForVLTasks(BertPreTrainedModel):
         gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
         gpt2_loss = gpt2_outputs[0]
 
+        if generate:
+            out = sample_sequence(
+                    model=self.gpt2_model,
+                    context=gpt2_inp,
+                    length=self.gpt2_tokenizer.max_len_single_sentence,
+                    temperature=1, #TOD change here
+            )
+            out = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
+
+            text = gpt2_tokenizer.decode(out, clean_up_tokenization_spaces=True, skip_special_tokens=True)
+            text = text[: text.find(args.stop_token) if args.stop_token else None]
+
+            rationale_text = gpt2_tokenizer.decode(rationale_text_label, clean_up_tokenization_spaces=True, skip_special_tokens=True)
+            rationale_text = rationale_text[: rationale_text.find(args.stop_token) if args.stop_token else None]
+            
+            print("Generated rationale ", text)
+            print("Gold rationale ", rationale_text)
+
+            generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.gpt2_tokenizer)
         # try:
         # generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.tokenizer)
         # except:

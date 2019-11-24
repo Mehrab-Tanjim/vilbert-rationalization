@@ -28,6 +28,9 @@ from torch.optim.lr_scheduler import LambdaLR, ReduceLROnPlateau
 
 import vilbert.utils as utils
 import torch.distributed as dist
+from transformers import GPT2Tokenizer
+
+gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', do_lower_case=True)
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -277,7 +280,7 @@ def main():
 
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
-            task_dataloader_train, task_dataloader_val = LoadDatasets(args, task_cfg, args.tasks.split('-'), args.debug)
+            task_dataloader_train, task_dataloader_val = LoadDatasets(args, task_cfg, gpt2_tokenizer, args.tasks.split('-'), args.debug)
 
     tbLogger = utils.tbLogger(logPath, savePath, task_names, task_ids, task_num_iters, args.gradient_accumulation_steps)
 
@@ -304,6 +307,7 @@ def main():
         model = VILBertForVLTasks.from_pretrained(
             args.from_pretrained, config, num_labels=num_labels, default_gpu=default_gpu
             )
+        model.assign_tockenizer(gpt2_tokenizer)
 
     task_losses = LoadLosses(args, task_cfg, args.tasks.split('-'))
     model.to(device)
@@ -416,6 +420,7 @@ def main():
         print("  Num steps: %d" %num_train_optimization_steps)
 
     startIterID = 0
+    # TODO 
     # initialize the data iteration.
     task_iter_train = {name:None for name in task_ids}
     task_count = {name:0 for name in task_ids}
@@ -445,9 +450,17 @@ def main():
         model.eval()
         # when run evaluate, we run each task sequentially.
         for task_id in task_ids:
+            num_batch_10 = int(0.1*len(task_dataloader_val[task_id]))
             for i, batch in enumerate(task_dataloader_val[task_id]):
-                loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
+                 # TODO generate
+                if i%num_batch_10==0:
+                    generate = True
+                else:
+                    generate = False
+
+                loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
                 tbLogger.step_val(epochId, float(loss), float(score), task_id, batch_size, 'val')
+                    
                 if default_gpu:
                     sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
                     sys.stdout.flush()

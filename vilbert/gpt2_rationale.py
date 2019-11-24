@@ -92,7 +92,7 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
                     is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
-    context = torch.tensor(context, dtype=torch.float, device=device )
+    # context = torch.tensor(context, dtype=torch.float, device=device )
     context = context[0].unsqueeze(0)
     context = context.unsqueeze(1)
     generated = context
