@@ -92,29 +92,69 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
                     is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
+
+
+    # context = torch.tensor(context, dtype=torch.long, device=device)
+    # context = context.unsqueeze(0).repeat(num_samples, 1)
+    # generated = context
+    # # with torch.no_grad():
+    # for _ in trange(length):
+
+    #     inputs = {'input_ids': generated}
+        
+    #     outputs = model(**inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+    #     next_token_logits = outputs[0][:, -1, :] / (temperature if temperature > 0 else 1.)
+
+    #     # repetition penalty from CTRL (https://arxiv.org/abs/1909.05858)
+    #     for i in range(num_samples):
+    #         for _ in set(generated[i].tolist()):
+    #             next_token_logits[i, _] /= repetition_penalty
+            
+    #     filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
+    #     if temperature == 0: # greedy sampling:
+    #         next_token = torch.argmax(filtered_logits, dim=-1).unsqueeze(-1)
+    #     else:
+    #         next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
+    #     generated = torch.cat((generated, next_token), dim=1)
+
+    # return generated
+
+
+    
     # context = torch.tensor(context, dtype=torch.float, device=device )
+    # print(context.shape)
     context = context[0].unsqueeze(0)
-    context = context.unsqueeze(1)
-    generated = context
+    # context = context.unsqueeze(1)
+    random_input = torch.LongTensor([[1]]).to(context.device)
+    # print(random_input.shape)
+    # print(context.shape)
     #TODO: added for getting the embedded representation
     # input_vec = model.transformer.wte(context)
-    # print(input_vec)
-    input_vec = context
+    # # print(input_vec)
+    # input_vec = context
     generated = None
     # generated.to(device)
     with torch.no_grad():
         for _ in trange(length):
 
             # inputs = {'input_rep': input_vec}
-            inputs = input_vec
-            outputs = model(inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+            inputs = generated
             # next token only for 1 batch size, i.e. 1st training sample
-            next_token_logits = outputs[0][0, -1, :] / (temperature if temperature > 0 else 1.)
+            if generated is None:
+                outputs = model((context, random_input))  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+                next_token_logits = outputs[0][0, 0, :] / (temperature if temperature > 0 else 1.)
+                # except:
+                #     import pdb
+                #     pdb.set_trace()
+            else:
+                outputs = model((context, inputs))  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+                next_token_logits = outputs[0][0, -1, :] / (temperature if temperature > 0 else 1.)
 
             # reptition penalty from CTRL (https://arxiv.org/abs/1909.05858)
             # for _ in set(generated.view(-2).tolist()):
             #     next_token_logits[_] /= repetition_penalty
             # TODO repetition_penalty= 1 this thing is just dividing by 1; not useful for GPT2
+            
 
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
             if temperature == 0: #greedy sampling:
@@ -123,12 +163,15 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
                 next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
 
             # Only for 1 batch size
-            input_vec = torch.cat((input_vec, model.transformer.wte(next_token.unsqueeze(0))), dim=1)
+            # input_vec = torch.cat((input_vec, model.transformer.wte(next_token.unsqueeze(0))), dim=1)
 
             if generated is None:
                 generated = next_token.unsqueeze(0)
+                # print("done first step")
             else:
                 generated = torch.cat((generated, next_token.unsqueeze(0)), dim=1)
+
+    # print("finished genration")     
     return generated
 
 def get_gpt2():
