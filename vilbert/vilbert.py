@@ -36,6 +36,7 @@ from .utils import cached_path
 import pdb
 from vilbert.gpt2_rationale import get_gpt2, sample_sequence, generate_rationale
 from transformers import GPT2Config, GPT2LMHeadModel
+from transformers import GPT2Tokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -1598,16 +1599,20 @@ class VILBertForVLTasks(BertPreTrainedModel):
             )
             out = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
 
-            text = gpt2_tokenizer.decode(out, clean_up_tokenization_spaces=True, skip_special_tokens=True)
-            text = text[: text.find(args.stop_token) if args.stop_token else None]
-
-            rationale_text = gpt2_tokenizer.decode(rationale_text_label, clean_up_tokenization_spaces=True, skip_special_tokens=True)
-            rationale_text = rationale_text[: rationale_text.find(args.stop_token) if args.stop_token else None]
+            text = self.gpt2_tokenizer.decode(out, clean_up_tokenization_spaces=True, skip_special_tokens=True)
+            # text = text[: text.find(args.stop_token) if args.stop_token else None]
+            print("Generated rationale ", text)
+            # import pdb
+            # pdb.set_trace()
+            print(self.gpt2_tokenizer.decode(GPT2Tokenizer.from_pretrained('gpt2').encode("Hello")))
+            
+            rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist())#, clean_up_tokenization_spaces=True, skip_special_tokens=True)
+            # rationale_text = rationale_text[: rationale_text.find(args.stop_token) if args.stop_token else None]
             
             print("Generated rationale ", text)
             print("Gold rationale ", rationale_text)
 
-            generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.gpt2_tokenizer)
+            # generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.gpt2_tokenizer)
         # try:
         # generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.tokenizer)
         # except:

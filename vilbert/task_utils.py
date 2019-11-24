@@ -53,8 +53,9 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
         segment_ids = segment_ids.view(-1, segment_ids.size(2))
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
-    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
-                                            model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate)
+    with torch.no_grad():
+        vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
+                    model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate)
    
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
@@ -156,10 +157,6 @@ def LoadLosses(args, task_cfg, task_ids):
     return losses
 
 def LoadDatasets(args, task_cfg, gpt2_tokenizer, ids, debug=False, split='trainval'):
-
-    tokenizer = BertTokenizer.from_pretrained(
-        args.bert_model, do_lower_case=True
-    )
 
     tokenizer = BertTokenizer.from_pretrained(
         args.bert_model, do_lower_case=True

@@ -248,7 +248,9 @@ class VCRDataset(Dataset):
             entry["input_mask"] = input_mask_all
             entry["segment_ids"] = segment_ids_all
 
+
             if self._rationale:
+                
                 self._max_caption_rat_length = 3 * (self._max_caption_length//4)
                 tokens_r, mask_r = self.replace_det_with_name(entry["rationale"], random_names, rationale=True)
 
@@ -264,12 +266,13 @@ class VCRDataset(Dataset):
                     segment_ids.append(0)
 
                 input_ids = self.gpt2_tokenizer.convert_tokens_to_ids(tokens)
+                
                 co_attention_mask = [-1] + mask_r + [-1]
 
                 input_mask = [1] * len(input_ids)
                 # Zero-pad up to the sequence length.
                 while len(input_ids) < self._max_caption_rat_length: #TODO not same as global maximum
-                    input_ids.append(0)
+                    input_ids.append(self.gpt2_tokenizer.convert_tokens_to_ids('\t'))
                     input_mask.append(0)
                     segment_ids.append(0)
                     co_attention_mask.append(-1)
@@ -282,6 +285,11 @@ class VCRDataset(Dataset):
                 entry["rationale_input_ids"] = input_ids
                 entry["rationale_input_mask"] = input_mask
                 entry["rationale_segment_ids"] = segment_ids
+
+                # if self.gpt2_tokenizer.decode(entry["rationale_input_ids"], clean_up_tokenization_spaces=True) != entry["rationale"]:
+                # print(self.gpt2_tokenizer.decode(entry["rationale_input_ids"] , clean_up_tokenization_spaces=True, skip_special_tokens=True))
+                    # print("ERROR")
+                    # exit()
 
             sys.stdout.write('%d/%d\r' % (count, len(self._entries)))
             sys.stdout.flush()
@@ -319,7 +327,7 @@ class VCRDataset(Dataset):
 
         return random_name
 
-    def replace_det_with_name(self, inputs, random_names, rationale=True):
+    def replace_det_with_name(self, inputs, random_names, rationale=False):
         tokens = []
         mask = []
         for w in inputs:
