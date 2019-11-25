@@ -250,9 +250,9 @@ class VCRDataset(Dataset):
 
 
             if self._rationale:
-                
+
                 self._max_caption_rat_length = 3 * (self._max_caption_length//4)
-                
+
                 tokens_r, mask_r = self.replace_det_with_name(entry["rationale"], random_names, rationale=True)
 
                 self._truncate_rationale_seq(tokens_r, mask_r, self._max_caption_rat_length - 3)
@@ -267,7 +267,7 @@ class VCRDataset(Dataset):
                     segment_ids.append(0)
 
                 input_ids = self.gpt2_tokenizer.convert_tokens_to_ids(tokens)
-                
+
                 co_attention_mask = [-1] + mask_r + [-1]
 
                 input_mask = [1] * len(input_ids)
@@ -347,7 +347,7 @@ class VCRDataset(Dataset):
                         mask += [idx] * len(word_token)
                         tokens += word_token
 
-        
+
 
         if rationale:
             sentence = ' '.join(sentence)
@@ -362,7 +362,7 @@ class VCRDataset(Dataset):
                     for idx in w:
                         word = random_names[idx]
                         mask += [idx] * len(tokens[count])
-                count += 1  
+                count += 1
 
         return tokens, mask
 
@@ -398,7 +398,7 @@ class VCRDataset(Dataset):
             tokens_r.pop()
             mask_r.pop()
 
-    def __getitem__(self, index, validation=False):
+    def __getitem__(self, index):
 
         entry = self._entries[index]
 

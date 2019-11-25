@@ -34,7 +34,7 @@ from torch.nn.utils.weight_norm import weight_norm
 
 from .utils import cached_path
 import pdb
-from vilbert.gpt2_rationale import get_gpt2, sample_sequence, generate_rationale
+from vilbert.gpt2_rationale import sample_sequence
 from transformers import GPT2Config, GPT2LMHeadModel
 from transformers import GPT2Tokenizer
 
@@ -1524,7 +1524,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
         self.embed = torch.nn.Linear(config.bi_hidden_size, self.gpt2_embed_dim)
         gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=gpt2_config)
-    
+
     def assign_tockenizer(self, gpt2_tokenizer):
         self.gpt2_tokenizer = gpt2_tokenizer
 
@@ -1540,7 +1540,6 @@ class VILBertForVLTasks(BertPreTrainedModel):
         co_attention_mask=None,
         output_all_encoded_layers=False,
         num_options=0,
-        train=True,
         generate = False
     ):
         sequence_output_t, sequence_output_v, pooled_output_t, pooled_output_v, _ = self.bert(
@@ -1601,15 +1600,13 @@ class VILBertForVLTasks(BertPreTrainedModel):
 
             text = self.gpt2_tokenizer.decode(out, clean_up_tokenization_spaces=False, skip_special_tokens=True)
             # text = text[: text.find(self.gpt2_tokenizer.stop_token)]
-           
-            print(self.gpt2_tokenizer.decode(GPT2Tokenizer.from_pretrained('gpt2').encode("Hello")))
-            
+
             rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist(), clean_up_tokenization_spaces=False, skip_special_tokens=True)
             # rationale_text = rationale_text[: rationale_text.find(self.gpt2_tokenizer)]
-            
-            print("Generated rationale ", text)
-            print("Gold rationale ", rationale_text)
-       
+
+            logger.info("Generated rationale: {}".format(text))
+            logger.info("Gold rationale: {}".format(rationale_text))
+
 
         return vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss
 
