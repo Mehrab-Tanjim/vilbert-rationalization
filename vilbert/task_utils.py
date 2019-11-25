@@ -24,9 +24,8 @@ LossMap = {'BCEWithLogitLoss': nn.BCEWithLogitsLoss(reduction='mean'),
 
 # Use tokenizer.max_len_single_sentence for max sequence legth for gpt2
 # Also, remember that there's no start token prepended automatically.
-gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', do_lower_case=True)
 
-def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses):
+def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=False):
     batch = tuple(t.cuda(device=device, non_blocking=True) for t in batch)
     features, spatials, image_mask, question, rationale, target, input_mask, segment_ids, co_attention_mask, question_id = batch
     batch_size = features.size(0)
@@ -54,9 +53,10 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
         segment_ids = segment_ids.view(-1, segment_ids.size(2))
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
-    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
-                                            model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
-
+    with torch.no_grad():
+        vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
+                    model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate)
+   
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
         loss = loss.mean() * target.size(1)
@@ -155,7 +155,7 @@ def LoadLosses(args, task_cfg, task_ids):
 
     return losses
 
-def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
+def LoadDatasets(args, task_cfg, gpt2_tokenizer, ids, debug=False, split='trainval'):
 
     tokenizer = BertTokenizer.from_pretrained(
         args.bert_model, do_lower_case=True
@@ -210,6 +210,7 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
                                 image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']],
                                 gt_image_features_reader= task_feature_reader2[task_cfg[task]['features_h5path2']],
                                 tokenizer=tokenizer,
+                                gpt2_tokenizer=gpt2_tokenizer,
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
                                 max_region_num=task_cfg[task]['max_region_num'],
@@ -227,6 +228,7 @@ def LoadDatasets(args, task_cfg, ids, debug=False, split='trainval'):
                                 image_features_reader= task_feature_reader1[task_cfg[task]['features_h5path1']],
                                 gt_image_features_reader= task_feature_reader2[task_cfg[task]['features_h5path2']],
                                 tokenizer=tokenizer,
+                                gpt2_tokenizer=gpt2_tokenizer,
                                 padding_index=0,
                                 max_seq_length=task_cfg[task]['max_seq_length'],
                                 max_region_num=task_cfg[task]['max_region_num'],

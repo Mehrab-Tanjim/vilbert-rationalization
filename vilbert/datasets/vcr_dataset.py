@@ -120,6 +120,7 @@ class VCRDataset(Dataset):
         image_features_reader: ImageFeaturesH5Reader,
         gt_image_features_reader: ImageFeaturesH5Reader,
         tokenizer: BertTokenizer,
+        gpt2_tokenizer,
         padding_index: int = 0,
         max_seq_length: int = 40,
         max_region_num: int = 60,
@@ -141,7 +142,7 @@ class VCRDataset(Dataset):
         self._image_features_reader = image_features_reader
         self._gt_image_features_reader = gt_image_features_reader
         self._tokenizer = tokenizer
-        self.gpt2_tokenizer = tokenizer #TODO change here
+        self.gpt2_tokenizer = gpt2_tokenizer #TODO change here
 
         self._padding_index = padding_index
         self._max_caption_length = max_seq_length
@@ -247,8 +248,11 @@ class VCRDataset(Dataset):
             entry["input_mask"] = input_mask_all
             entry["segment_ids"] = segment_ids_all
 
+
             if self._rationale:
+
                 self._max_caption_rat_length = 3 * (self._max_caption_length//4)
+
                 tokens_r, mask_r = self.replace_det_with_name(entry["rationale"], random_names, rationale=True)
 
                 self._truncate_rationale_seq(tokens_r, mask_r, self._max_caption_rat_length - 3)
@@ -263,12 +267,13 @@ class VCRDataset(Dataset):
                     segment_ids.append(0)
 
                 input_ids = self.gpt2_tokenizer.convert_tokens_to_ids(tokens)
+
                 co_attention_mask = [-1] + mask_r + [-1]
 
                 input_mask = [1] * len(input_ids)
                 # Zero-pad up to the sequence length.
                 while len(input_ids) < self._max_caption_rat_length: #TODO not same as global maximum
-                    input_ids.append(0)
+                    input_ids.append(self.gpt2_tokenizer.convert_tokens_to_ids('\t'))
                     input_mask.append(0)
                     segment_ids.append(0)
                     co_attention_mask.append(-1)
@@ -318,28 +323,46 @@ class VCRDataset(Dataset):
 
         return random_name
 
-    def replace_det_with_name(self, inputs, random_names, rationale=True):
+    def replace_det_with_name(self, inputs, random_names, rationale=False):
         tokens = []
         mask = []
+        sentence = []
         for w in inputs:
             if isinstance(w, str):
                 word = w
                 det = -1
                 if rationale:
-                    word_token = self.gpt2_tokenizer.tokenize(word)
+                    sentence.append(word)
                 else:
                     word_token = self._tokenizer.tokenize(word)
-                mask += [det] * len(word_token)
-                tokens += word_token
+                    mask += [det] * len(word_token)
+                    tokens += word_token
             else:
                 for idx in w:
                     word = random_names[idx]
                     if rationale:
-                        word_token = self.gpt2_tokenizer.tokenize(word)
+                        sentence.append(word)
                     else:
                         word_token = self._tokenizer.tokenize(word)
-                    mask += [idx] * len(word_token)
-                    tokens += word_token
+                        mask += [idx] * len(word_token)
+                        tokens += word_token
+
+
+
+        if rationale:
+            sentence = ' '.join(sentence)
+            tokens = self.gpt2_tokenizer.tokenize(sentence)
+
+            count = 0
+            for w in inputs:
+                if isinstance(w, str):
+                    det = -1
+                    mask += [det] * len(tokens[count])
+                else:
+                    for idx in w:
+                        word = random_names[idx]
+                        mask += [idx] * len(tokens[count])
+                count += 1
 
         return tokens, mask
 
@@ -443,6 +466,7 @@ class VCRDataset(Dataset):
             for jj, idx in enumerate(co_attention_idx):
                 if idx != -1 and idx+num_box_preserve < self._max_region_num:
                     co_attention_mask[ii, idx+num_box_preserve, jj] = 1
+
 
         return features, spatials, image_mask, input_ids, rationale_input_ids, target, input_mask, segment_ids, co_attention_mask, anno_id
 

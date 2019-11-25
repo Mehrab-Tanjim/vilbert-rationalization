@@ -36,29 +36,6 @@ logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(messa
                     level = logging.INFO)
 logger = logging.getLogger(__name__)
 
-MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
-
-# ALL_MODELS = sum((tuple(conf.pretrained_config_archive_map.keys()) for conf in (GPT2Config, OpenAIGPTConfig, XLNetConfig, TransfoXLConfig, XLMConfig, CTRLConfig)), ())
-
-MODEL_CLASSES = {
-    'gpt2': (GPT2LMHeadModel, GPT2Tokenizer)
-}
-
-# Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia
-# in https://github.com/rusiaaman/XLNet-gen#methodology
-# and https://medium.com/@amanrusia/xlnet-speaks-comparison-to-gpt-2-ea1a4e9ba39e
-PADDING_TEXT = """ In 1991, the remains of Russian Tsar Nicholas II and his family
-(except for Alexei and Maria) are discovered.
-The voice of Nicholas's young son, Tsarevich Alexei Nikolaevich, narrates the
-remainder of the story. 1883 Western Siberia,
-a young Grigori Rasputin is asked by his father and a group of men to perform magic.
-Rasputin has a vision and denounces one of the men as a horse thief. Although his
-father initially slaps him for making such an accusation, Rasputin watches as the
-man is chased outside and beaten. Twenty years later, Rasputin sees a vision of
-the Virgin Mary, prompting him to become a priest. Rasputin quickly becomes famous,
-with people, even a bishop, begging for his blessing. <eod> </s> <eos>"""
-
-
 def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     """ Filter a distribution of logits using top-k and/or nucleus (top-p) filtering
         Args:
@@ -92,29 +69,28 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
                     is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
-    context = torch.tensor(context, dtype=torch.float, device=device )
+
     context = context[0].unsqueeze(0)
-    context = context.unsqueeze(1)
-    generated = context
-    #TODO: added for getting the embedded representation
-    # input_vec = model.transformer.wte(context)
-    # print(input_vec)
-    input_vec = context
+    random_input = torch.LongTensor([[1]]).to(context.device)
     generated = None
-    # generated.to(device)
     with torch.no_grad():
-        for _ in trange(length):
+        for _ in range(length):
 
             # inputs = {'input_rep': input_vec}
-            inputs = input_vec
-            outputs = model(inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+            inputs = generated
             # next token only for 1 batch size, i.e. 1st training sample
-            next_token_logits = outputs[0][0, -1, :] / (temperature if temperature > 0 else 1.)
+            if generated is None:
+                outputs = model((context, random_input))  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+                next_token_logits = outputs[0][0, 0, :] / (temperature if temperature > 0 else 1.)
+            else:
+                outputs = model((context, inputs))  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
+                next_token_logits = outputs[0][0, -1, :] / (temperature if temperature > 0 else 1.)
 
             # reptition penalty from CTRL (https://arxiv.org/abs/1909.05858)
             # for _ in set(generated.view(-2).tolist()):
             #     next_token_logits[_] /= repetition_penalty
             # TODO repetition_penalty= 1 this thing is just dividing by 1; not useful for GPT2
+
 
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
             if temperature == 0: #greedy sampling:
@@ -122,99 +98,9 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
             else:
                 next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
 
-            # Only for 1 batch size
-            input_vec = torch.cat((input_vec, model.transformer.wte(next_token.unsqueeze(0))), dim=1)
-
             if generated is None:
                 generated = next_token.unsqueeze(0)
             else:
                 generated = torch.cat((generated, next_token.unsqueeze(0)), dim=1)
+
     return generated
-
-def get_gpt2():
-    class Args:
-        pass
-    args = Args()
-    args.model_type = 'gpt2'
-    args.model_name_or_path = 'gpt2'
-    args.xlm_lang = ''
-    args.length=13
-    args.temperature=1.0
-    args.repetition_penalty=1.0
-    args.top_k=0
-    args.top_p=0.9
-    args.stop_token=None
-
-    args.model_type = args.model_type.lower()
-    model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
-    model = model_class.from_pretrained(args.model_name_or_path)
-    return model, args, tokenizer
-
-def generate_rationale(gpt2_inp, model, args, tokenizer):
-
-    model.eval()
-
-    if args.length < 0 and model.config.max_position_embeddings > 0:
-        args.length = model.config.max_position_embeddings
-    elif 0 < model.config.max_position_embeddings < args.length:
-        args.length = model.config.max_position_embeddings  # No generation bigger than model size
-    elif args.length < 0:
-        args.length = MAX_LENGTH  # avoid infinite loop
-
-    logger.info(args)
-    if args.model_type in ["ctrl"]:
-        if args.temperature > 0.7:
-            logger.info('CTRL typically works better with lower temperatures (and lower top_k).')
-
-    # while True:
-    xlm_lang = None
-    # XLM Language usage detailed in the issues #1414
-    if args.model_type in ["xlm"] and hasattr(tokenizer, 'lang2id') and hasattr(model.config, 'use_lang_emb') \
-            and model.config.use_lang_emb:
-        if args.xlm_lang:
-            language = args.xlm_lang
-        else:
-            language = None
-            while language not in tokenizer.lang2id.keys():
-                language = input("Using XLM. Select language in " + str(list(tokenizer.lang2id.keys())) + " >>> ")
-        xlm_lang = tokenizer.lang2id[language]
-
-    # XLM masked-language modeling (MLM) models need masked token (see details in sample_sequence)
-    is_xlm_mlm = args.model_type in ["xlm"] and 'mlm' in args.model_name_or_path
-    if is_xlm_mlm:
-        xlm_mask_token = tokenizer.mask_token_id
-    else:
-        xlm_mask_token = None
-
-    # raw_text = args.prompt if args.prompt else input("Model prompt >>> ")
-    # if args.model_type in ["transfo-xl", "xlnet"]:
-    #     # Models with memory likes to have a long prompt for short inputs.
-    #     raw_text = (args.padding_text if args.padding_text else PADDING_TEXT) + raw_text
-    # context_tokens = tokenizer.encode(raw_text)
-    # if args.model_type == "ctrl":
-    #     if not any(context_tokens[0] == x for x in tokenizer.control_codes.values()):
-    #         logger.info("WARNING! You are not starting your generation from a control code so you won't get good results")
-    out = sample_sequence(
-        model=model,
-        context=gpt2_inp,
-        length=args.length,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        repetition_penalty=args.repetition_penalty,
-        is_xlnet=bool(args.model_type == "xlnet"),
-        is_xlm_mlm=is_xlm_mlm,
-        xlm_mask_token=xlm_mask_token,
-        xlm_lang=xlm_lang,
-        device=args.device
-    )
-    out = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
-
-    text = tokenizer.decode(out, clean_up_tokenization_spaces=True, skip_special_tokens=True)
-    text = text[: text.find(args.stop_token) if args.stop_token else None]
-
-    print("Generated rationale ", text)
-        # if args.prompt:
-        #     break
-    return text
