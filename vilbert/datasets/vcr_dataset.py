@@ -252,6 +252,7 @@ class VCRDataset(Dataset):
             if self._rationale:
                 
                 self._max_caption_rat_length = 3 * (self._max_caption_length//4)
+                
                 tokens_r, mask_r = self.replace_det_with_name(entry["rationale"], random_names, rationale=True)
 
                 self._truncate_rationale_seq(tokens_r, mask_r, self._max_caption_rat_length - 3)
@@ -285,11 +286,6 @@ class VCRDataset(Dataset):
                 entry["rationale_input_ids"] = input_ids
                 entry["rationale_input_mask"] = input_mask
                 entry["rationale_segment_ids"] = segment_ids
-
-                # if self.gpt2_tokenizer.decode(entry["rationale_input_ids"], clean_up_tokenization_spaces=True) != entry["rationale"]:
-                # print(self.gpt2_tokenizer.decode(entry["rationale_input_ids"] , clean_up_tokenization_spaces=True, skip_special_tokens=True))
-                    # print("ERROR")
-                    # exit()
 
             sys.stdout.write('%d/%d\r' % (count, len(self._entries)))
             sys.stdout.flush()
@@ -330,25 +326,43 @@ class VCRDataset(Dataset):
     def replace_det_with_name(self, inputs, random_names, rationale=False):
         tokens = []
         mask = []
+        sentence = []
         for w in inputs:
             if isinstance(w, str):
                 word = w
                 det = -1
                 if rationale:
-                    word_token = self.gpt2_tokenizer.tokenize(word)
+                    sentence.append(word)
                 else:
                     word_token = self._tokenizer.tokenize(word)
-                mask += [det] * len(word_token)
-                tokens += word_token
+                    mask += [det] * len(word_token)
+                    tokens += word_token
             else:
                 for idx in w:
                     word = random_names[idx]
                     if rationale:
-                        word_token = self.gpt2_tokenizer.tokenize(word)
+                        sentence.append(word)
                     else:
                         word_token = self._tokenizer.tokenize(word)
-                    mask += [idx] * len(word_token)
-                    tokens += word_token
+                        mask += [idx] * len(word_token)
+                        tokens += word_token
+
+        
+
+        if rationale:
+            sentence = ' '.join(sentence)
+            tokens = self.gpt2_tokenizer.tokenize(sentence)
+
+            count = 0
+            for w in inputs:
+                if isinstance(w, str):
+                    det = -1
+                    mask += [det] * len(tokens[count])
+                else:
+                    for idx in w:
+                        word = random_names[idx]
+                        mask += [idx] * len(tokens[count])
+                count += 1  
 
         return tokens, mask
 
@@ -384,7 +398,7 @@ class VCRDataset(Dataset):
             tokens_r.pop()
             mask_r.pop()
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, validation=False):
 
         entry = self._entries[index]
 
@@ -452,6 +466,7 @@ class VCRDataset(Dataset):
             for jj, idx in enumerate(co_attention_idx):
                 if idx != -1 and idx+num_box_preserve < self._max_region_num:
                     co_attention_mask[ii, idx+num_box_preserve, jj] = 1
+
 
         return features, spatials, image_mask, input_ids, rationale_input_ids, target, input_mask, segment_ids, co_attention_mask, anno_id
 

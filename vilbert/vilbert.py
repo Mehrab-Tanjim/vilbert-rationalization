@@ -1594,31 +1594,22 @@ class VILBertForVLTasks(BertPreTrainedModel):
             out = sample_sequence(
                     model=self.gpt2_model,
                     context=gpt2_inp,
-                    length=self.gpt2_tokenizer.max_len_single_sentence,
-                    temperature=1, #TOD change here
+                    length=30, #TODO 3 * (self._max_caption_length//4
+                    temperature=1, #TODO change here
             )
             out = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
 
-            text = self.gpt2_tokenizer.decode(out, clean_up_tokenization_spaces=True, skip_special_tokens=True)
-            # text = text[: text.find(args.stop_token) if args.stop_token else None]
-            print("Generated rationale ", text)
-            # import pdb
-            # pdb.set_trace()
+            text = self.gpt2_tokenizer.decode(out, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+            # text = text[: text.find(self.gpt2_tokenizer.stop_token)]
+           
             print(self.gpt2_tokenizer.decode(GPT2Tokenizer.from_pretrained('gpt2').encode("Hello")))
             
-            rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist())#, clean_up_tokenization_spaces=True, skip_special_tokens=True)
-            # rationale_text = rationale_text[: rationale_text.find(args.stop_token) if args.stop_token else None]
+            rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist(), clean_up_tokenization_spaces=False, skip_special_tokens=True)
+            # rationale_text = rationale_text[: rationale_text.find(self.gpt2_tokenizer)]
             
             print("Generated rationale ", text)
             print("Gold rationale ", rationale_text)
-
-            # generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.gpt2_tokenizer)
-        # try:
-        # generate_rationale(gpt2_inp, self.gpt2, self.gpt2_args, self.tokenizer)
-        # except:
-        #     import pdb
-        #     pdb.set_trace()
-
+       
 
         return vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss
 
