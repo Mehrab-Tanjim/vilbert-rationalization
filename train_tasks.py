@@ -5,7 +5,6 @@ import os
 import random
 from io import open
 import numpy as np
-import shutil
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from bisect import bisect
@@ -220,7 +219,8 @@ def main():
 
     # removes everything in that directory
     if os.path.isdir(logPath):
-        shutil.rmtree(logPath)
+        logger.error('Tensorboard Log path exists. Aborting.')
+        raise ValueError('Tensorboard Log path exists')
 
     bert_weight_name = json.load(open("config/" + args.bert_model + "_weight_name.json", "r"))
 
