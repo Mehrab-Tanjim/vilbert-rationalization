@@ -467,18 +467,16 @@ def main():
         for task_id in task_ids:
             num_batch_10 = int(0.1*len(task_dataloader_val[task_id]))
             for i, batch in enumerate(task_dataloader_val[task_id]):
-                
                 # generate
                 if i%num_batch_10==0:
                     generate = True
                 else:
                     generate = False
-                
-                loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, , generate=generate)
-                loss = loss_vl + gpt2_loss
-                
-                tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), task_id, batch_size, 'val')
 
+                loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
+                loss = loss_vl + gpt2_loss
+
+                tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), task_id, batch_size, 'val')
                 if default_gpu:
                     sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
                     sys.stdout.flush()
