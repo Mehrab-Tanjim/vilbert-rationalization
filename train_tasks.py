@@ -5,7 +5,7 @@ import os
 import random
 from io import open
 import numpy as np
-
+import shutil
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from bisect import bisect
@@ -210,10 +210,15 @@ def main():
         prefix = '-' + args.save_name
     else:
         prefix = ''
+        
     timeStamp = '-'.join(task_names) + '_' + args.config_file.split('/')[1].split('.')[0] + prefix
     savePath = os.path.join(args.output_dir, timeStamp)
-    logPath = os.path.join(args.tensorboard_dir, timeStamp)
+    logPath = os.path.join(args.tensorboard_dir, timeStamp + '_tf_log')
 
+    # removes everything in that directory
+    if os.path.isdir(logPath):
+        shutil.rmtree(logPath)        
+        
     bert_weight_name = json.load(open("config/" + args.bert_model + "_weight_name.json", "r"))
 
     if args.local_rank == -1 or args.no_cuda:
@@ -426,18 +431,28 @@ def main():
             for task_id in task_ids:
                 if iterId >= task_start_iter[task_id]:
                 # if iterId % task_interval[task_id] == 0:
-                    loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter)
+                    loss_vl, gpt2_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter)
+                    
+                    loss = loss_vl + gpt2_loss
+
                     loss = loss * loss_scale[task_id]
+                    loss_vl = loss_vl * loss_scale[task_id]
+                    gpt2_loss = gpt2_loss * loss_scale[task_id]
+
                     if args.gradient_accumulation_steps > 1:
                         loss = loss / args.gradient_accumulation_steps
+                        loss_vl = loss_vl / args.gradient_accumulation_steps
+                        gpt2_loss = gpt2_loss / args.gradient_accumulation_steps
+
 
                     loss.backward()
+
                     if (step + 1) % args.gradient_accumulation_steps == 0:
                         optimizer.step()
                         model.zero_grad()
 
                         if default_gpu:
-                            tbLogger.step_train(epochId, iterId, float(loss), float(score), optimizer.show_lr(), task_id, 'train')
+                            tbLogger.step_train(epochId, iterId, float(loss), float(loss_vl), float(gpt2_loss), float(score), optimizer.show_lr(), task_id, 'train')
 
             if step % (20 * args.gradient_accumulation_steps) == 0 and step != 0 and default_gpu:
                 tbLogger.showLossTrain()
@@ -446,8 +461,9 @@ def main():
         # when run evaluate, we run each task sequentially.
         for task_id in task_ids:
             for i, batch in enumerate(task_dataloader_val[task_id]):
-                loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
-                tbLogger.step_val(epochId, float(loss), float(score), task_id, batch_size, 'val')
+                loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
+                loss = loss_vl + gpt2_loss
+                tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), task_id, batch_size, 'val')
                 if default_gpu:
                     sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
                     sys.stdout.flush()

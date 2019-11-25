@@ -67,7 +67,6 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
         loss = task_losses[task_id](vil_logit, target)
         _, preds = torch.max(vil_logit, 1)
         batch_score = (preds == target).sum()
-        loss = loss + gpt2_loss
 
     elif task_cfg[task_id]['type'] == 'V-logit':
         loss = task_losses[task_id](vision_logit, target)
@@ -76,7 +75,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
         select_target = target.squeeze(2).gather(1, select_idx.view(-1,1))
         batch_score = torch.sum(select_target>0.5).item()
 
-    return float(loss), float(batch_score), batch_size
+    return float(loss), float(gpt2_loss), float(batch_score), batch_size
 
 def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter):
     # given the current task, decided whether to forward the model and forward with specific loss.
@@ -130,7 +129,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
         _, preds = torch.max(vil_logit, 1)
         batch_score = float((preds == target).sum()) / float(batch_size)
         loss = task_losses[task_id](vil_logit, target)
-        loss = loss + gpt2_loss
+        # gpt2_loss = gpt2_loss
 
     elif task_cfg[task_id]['type'] == 'V-logit':
         loss = task_losses[task_id](vision_logit, target)
@@ -139,7 +138,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
         select_target = target.squeeze(2).gather(1, select_idx.view(-1,1))
         batch_score = float(torch.sum(select_target>0.5)) / batch_size
 
-    return loss, batch_score
+    return loss, gpt2_loss, batch_score
 
 
 def LoadLosses(args, task_cfg, task_ids):
