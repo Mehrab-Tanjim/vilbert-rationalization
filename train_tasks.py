@@ -219,8 +219,7 @@ def main():
 
     # removes everything in that directory
     if os.path.isdir(logPath):
-        logger.error('Tensorboard Log path exists. Aborting.')
-        raise ValueError('Tensorboard Log path exists')
+        logger.error('Tensorboard Log path exists. Overwriting.')
 
     bert_weight_name = json.load(open("config/" + args.bert_model + "_weight_name.json", "r"))
 
