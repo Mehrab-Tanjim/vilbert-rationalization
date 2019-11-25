@@ -1613,17 +1613,14 @@ class VILBertForVLTasks(BertPreTrainedModel):
             references=[]
             hypotheses=[]
 
-            try:
-                for rat_ids, gen_ids in zip(rationale_text_label.tolist(), out.tolist()):
-                    rat_dec = self.gpt2_tokenizer.decode(rat_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
-                    gen_dec = self.gpt2_tokenizer.decode(gen_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
-                    references.append(rat_dec)
-                    hypotheses.append(gen_dec)
+            for rat_ids, gen_ids in zip(rationale_text_label.tolist(), out.tolist()):
+                rat_dec = self.gpt2_tokenizer.decode(rat_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+                gen_dec = self.gpt2_tokenizer.decode(gen_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+                references.append(rat_dec)
+                hypotheses.append(gen_dec)
 
-                bleu_score=sacrebleu.raw_corpus_bleu(hypotheses, [references], .01).score
-                to_return = to_return + (bleu_score,)
-            except:
-                import pdb; pdb.set_trace()  # XXX BREAKPOINT
+            bleu_score=sacrebleu.raw_corpus_bleu(hypotheses, [references], .01).score
+            to_return = to_return + (bleu_score,)
 
         return to_return
 
