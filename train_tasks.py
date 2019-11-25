@@ -420,7 +420,7 @@ def main():
         print("  Num steps: %d" %num_train_optimization_steps)
 
     startIterID = 0
-    # TODO 
+    # TODO
     # initialize the data iteration.
     task_iter_train = {name:None for name in task_ids}
     task_count = {name:0 for name in task_ids}
@@ -449,18 +449,21 @@ def main():
 
         model.eval()
         # when run evaluate, we run each task sequentially.
+        bleu_list = []
         for task_id in task_ids:
             num_batch_10 = int(0.1*len(task_dataloader_val[task_id]))
             for i, batch in enumerate(task_dataloader_val[task_id]):
                  # TODO generate
                 if i%num_batch_10==0:
                     generate = True
+                    loss, score, batch_size, bleu_score = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
+                    bleu_list.append(bleu_score)
                 else:
                     generate = False
+                    loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
 
-                loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
                 tbLogger.step_val(epochId, float(loss), float(score), task_id, batch_size, 'val')
-                    
+
                 if default_gpu:
                     sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
                     sys.stdout.flush()

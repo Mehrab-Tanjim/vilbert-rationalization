@@ -54,9 +54,10 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     with torch.no_grad():
-        vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
-                    model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate)
-   
+         outs = model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate)
+
+    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = outs[:8]
+
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
         loss = loss.mean() * target.size(1)
@@ -76,7 +77,12 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
         select_target = target.squeeze(2).gather(1, select_idx.view(-1,1))
         batch_score = torch.sum(select_target>0.5).item()
 
-    return float(loss), float(batch_score), batch_size
+    to_return = float(loss), float(batch_score), batch_size
+    if generate:
+        bleu_score = outs[-1]
+        to_return = to_return + (bleu_score,)
+
+    return to_return
 
 def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter):
     # given the current task, decided whether to forward the model and forward with specific loss.
