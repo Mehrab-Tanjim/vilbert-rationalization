@@ -45,7 +45,7 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
                 Nucleus filtering is described in Holtzman et al. (http://arxiv.org/abs/1904.09751)
         From: https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317
     """
-    assert logits.dim() == 1  # batch size 1 for now - could be updated for more but the code would be less clear
+    # assert logits.dim() == 1  # batch size 1 for now - could be updated for more but the code would be less clear
     top_k = min(top_k, logits.size(-1))  # Safety check
     if top_k > 0:
         # Remove all tokens with a probability less than the last token of the top-k
@@ -70,8 +70,8 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
                     is_xlnet=False, is_xlm_mlm=False, xlm_mask_token=None, xlm_lang=None, device='cpu'):
 
-    context = context[0].unsqueeze(0)
-    random_input = torch.LongTensor([[1]]).to(context.device)
+    context_shape = context.size()
+    random_input = torch.LongTensor([[1]]).expand(context_shape[0],1).to(context.device)
     generated = None
     with torch.no_grad():
         for _ in range(length):
@@ -81,10 +81,10 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
             # next token only for 1 batch size, i.e. 1st training sample
             if generated is None:
                 outputs = model((context, random_input))  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
-                next_token_logits = outputs[0][0, 0, :] / (temperature if temperature > 0 else 1.)
+                next_token_logits = outputs[0][:, 0, :] / (temperature if temperature > 0 else 1.)
             else:
                 outputs = model((context, inputs))  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet/CTRL (cached hidden-states)
-                next_token_logits = outputs[0][0, -1, :] / (temperature if temperature > 0 else 1.)
+                next_token_logits = outputs[0][:, -1, :] / (temperature if temperature > 0 else 1.)
 
             # reptition penalty from CTRL (https://arxiv.org/abs/1909.05858)
             # for _ in set(generated.view(-2).tolist()):
@@ -94,13 +94,13 @@ def sample_sequence(model, length, context, num_samples=1, temperature=1, top_k=
 
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
             if temperature == 0: #greedy sampling:
-                next_token = torch.argmax(filtered_logits).unsqueeze(0)
+                next_token = torch.argmax(filtered_logits, dim=-1, keepdim=True)
             else:
                 next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
 
             if generated is None:
-                generated = next_token.unsqueeze(0)
+                generated = next_token
             else:
-                generated = torch.cat((generated, next_token.unsqueeze(0)), dim=1)
+                generated = torch.cat((generated, next_token), dim=1)
 
     return generated

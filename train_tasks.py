@@ -213,15 +213,15 @@ def main():
         prefix = '-' + args.save_name
     else:
         prefix = ''
-        
+
     timeStamp = '-'.join(task_names) + '_' + args.config_file.split('/')[1].split('.')[0] + prefix
     savePath = os.path.join(args.output_dir, timeStamp)
-    logPath = os.path.join(args.tensorboard_dir, timeStamp + '_tf_log')
+    logPath = os.path.join(args.tensorboard_dir, timeStamp)
 
     # removes everything in that directory
     if os.path.isdir(logPath):
-        shutil.rmtree(logPath)        
-        
+        shutil.rmtree(logPath)
+
     bert_weight_name = json.load(open("config/" + args.bert_model + "_weight_name.json", "r"))
 
     if args.local_rank == -1 or args.no_cuda:
@@ -425,7 +425,7 @@ def main():
         print("  Num steps: %d" %num_train_optimization_steps)
 
     startIterID = 0
-    # TODO 
+    # TODO
     # initialize the data iteration.
     task_iter_train = {name:None for name in task_ids}
     task_count = {name:0 for name in task_ids}
@@ -437,7 +437,7 @@ def main():
                 if iterId >= task_start_iter[task_id]:
                 # if iterId % task_interval[task_id] == 0:
                     loss_vl, gpt2_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter)
-                    
+
                     loss = loss_vl + gpt2_loss
 
                     loss = loss * loss_scale[task_id]
@@ -470,13 +470,14 @@ def main():
                 # generate
                 if i%num_batch_10==0:
                     generate = True
+                    loss_vl, gpt2_loss, score, batch_size, bleu_score = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
                 else:
                     generate = False
+                    loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
 
-                loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
                 loss = loss_vl + gpt2_loss
+                tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), bleu_score, task_id, batch_size, 'val')
 
-                tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), task_id, batch_size, 'val')
                 if default_gpu:
                     sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
                     sys.stdout.flush()

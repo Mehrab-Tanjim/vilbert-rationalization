@@ -24,6 +24,7 @@ import shutil
 import tarfile
 import tempfile
 import sys
+import sacrebleu
 from io import open
 
 import torch
@@ -1589,6 +1590,8 @@ class VILBertForVLTasks(BertPreTrainedModel):
         gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
         gpt2_loss = gpt2_outputs[0]
 
+        to_return = (vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss)
+
         if generate:
             out = sample_sequence(
                     model=self.gpt2_model,
@@ -1596,9 +1599,9 @@ class VILBertForVLTasks(BertPreTrainedModel):
                     length=30, #TODO 3 * (self._max_caption_length//4
                     temperature=1, #TODO change here
             )
-            out = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
+            first_rat = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
 
-            text = self.gpt2_tokenizer.decode(out, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+            text = self.gpt2_tokenizer.decode(first_rat, clean_up_tokenization_spaces=False, skip_special_tokens=True)
             # text = text[: text.find(self.gpt2_tokenizer.stop_token)]
 
             rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist(), clean_up_tokenization_spaces=False, skip_special_tokens=True)
@@ -1607,8 +1610,22 @@ class VILBertForVLTasks(BertPreTrainedModel):
             logger.info("Generated rationale: {}".format(text))
             logger.info("Gold rationale: {}".format(rationale_text))
 
+            references=[]
+            hypotheses=[]
 
-        return vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss
+            try:
+                for rat_ids, gen_ids in zip(rationale_text_label.tolist(), out.tolist()):
+                    rat_dec = self.gpt2_tokenizer.decode(rat_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+                    gen_dec = self.gpt2_tokenizer.decode(gen_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+                    references.append(rat_dec)
+                    hypotheses.append(gen_dec)
+
+                bleu_score=sacrebleu.raw_corpus_bleu(hypotheses, [references], .01).score
+                to_return = to_return + (bleu_score,)
+            except:
+                import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+        return to_return
 
 class SimpleClassifier(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim, dropout):

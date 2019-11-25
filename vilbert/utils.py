@@ -70,7 +70,9 @@ class tbLogger(object):
         self.task_loss_val = {task_id:0 for task_id in task_ids}
         self.loss_vl_val = 0
         self.gpt2_loss_val = 0
-        
+        self.bleu_score_net = 0
+        self.bleu_count = 0
+
         self.task_score_val = {task_id:0 for task_id in task_ids}
         self.task_step_val = {task_id:0 for task_id in task_ids}
         self.task_datasize_val = {task_id:0 for task_id in task_ids}
@@ -105,10 +107,12 @@ class tbLogger(object):
 
         self.linePlot(stepId, score, split, self.task_id2name[task_id] + '_score')
 
-    def step_val(self, epochId, loss, loss_vl, gpt2_loss, score, task_id, batch_size, split):
+    def step_val(self, epochId, loss, loss_vl, gpt2_loss, score, bleu_score, task_id, batch_size, split):
         self.task_loss_val[task_id] += loss
         self.loss_vl_val += loss_vl
         self.gpt2_loss_val += gpt2_loss
+        self.bleu_score_net += bleu_score
+        self.bleu_count += 1
 
         self.task_score_val[task_id] += score
         self.task_step_val[task_id] += self.gradient_accumulation_steps
@@ -123,16 +127,18 @@ class tbLogger(object):
             loss = self.task_loss_val[task_id] / float(self.task_step_val[task_id])
             loss_vl = self.loss_vl_val / float(self.task_step_val[task_id])
             gpt2_loss = self.gpt2_loss_val / float(self.task_step_val[task_id])
+            bleu = self.bleu_score_net / self.bleu_count
 
             score = self.task_score_val[task_id] / float(self.task_datasize_val[task_id])
             ave_score += score
             ave_loss += loss
-            lossInfo += '[%s]: loss %.3f loss_vl %.3f gpt2_loss %.3f score %.3f ' %(self.task_id2name[task_id], loss, loss_vl, gpt2_loss, score * 100.0)
+            lossInfo += '[%s]: loss %.3f loss_vl %.3f gpt2_loss %.3f score %.3f  blue %.3f' %(self.task_id2name[task_id], loss, loss_vl, gpt2_loss, score * 100.0, bleu)
 
             self.linePlot(self.epochId, loss, 'val', self.task_id2name[task_id] + '_loss')
             self.linePlot(self.epochId, loss_vl, 'val', self.task_id2name[task_id] + '_vl_loss')
             self.linePlot(self.epochId, gpt2_loss, 'val', self.task_id2name[task_id] + '_gpt2_loss')
             self.linePlot(self.epochId, score, 'val', self.task_id2name[task_id] + '_score')
+            self.linePlot(self.epochId, bleu, 'val', self.task_id2name[task_id] + '_bleu')
 
         ave_score = ave_score / len(self.task_ids)
         self.task_loss_val = {task_id:0 for task_id in self.task_loss_val}
@@ -146,7 +152,7 @@ class tbLogger(object):
         return ave_score
 
     def showLossTrain(self):
-        # show the current loss, once showed, reset the loss. 
+        # show the current loss, once showed, reset the loss.
         lossInfo = ''
         for task_id in self.task_ids:
             if self.task_num_iters[task_id] > 0:
@@ -158,14 +164,14 @@ class tbLogger(object):
                                             self.gpt2_loss_tmp / float(self.task_step_tmp[task_id]), \
                                             self.task_score_tmp[task_id] / float(self.task_step_tmp[task_id]), \
                                             self.task_norm_tmp[task_id] / float(self.task_step_tmp[task_id]))
-        
+
         logger.info(lossInfo)
         print(lossInfo, file=self.txt_f)
 
         self.task_step_tmp = {task_id:0 for task_id in self.task_ids}
         self.task_loss_tmp = {task_id:0 for task_id in self.task_ids}
         self.loss_vl_tmp  = 0
-        self.gpt2_loss_tmp = 0 
+        self.gpt2_loss_tmp = 0
         self.task_score_tmp =  {task_id:0 for task_id in self.task_ids}
         self.task_norm_tmp = {task_id:0 for task_id in self.task_ids}
 
