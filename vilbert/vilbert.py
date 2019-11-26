@@ -1609,8 +1609,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
             # rationale_text = rationale_text[: rationale_text.find(self.gpt2_tokenizer)]
 
             pred_ans = torch.argmax(vil_probs[0]).item()
-            logger.info("[Img ID: {}] Predicted Ans: {} \t| Gold rationale: {}  \
-                        | Generated rationale: {}".format((question_id - 1000000).item(), pred_ans, rationale_text, text))
+            logger.info("[Img ID: {}] Predicted Ans: {} \t| Gold rationale: {} | Generated rationale: {}".format((question_id - 1000000).item(), pred_ans, rationale_text, text))
 
             references=[]
             hypotheses=[]
