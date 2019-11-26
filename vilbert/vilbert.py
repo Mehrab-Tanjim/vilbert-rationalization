@@ -1541,7 +1541,8 @@ class VILBertForVLTasks(BertPreTrainedModel):
         co_attention_mask=None,
         output_all_encoded_layers=False,
         num_options=0,
-        generate = False
+        generate = False,
+        question_id = -1
     ):
         sequence_output_t, sequence_output_v, pooled_output_t, pooled_output_v, _ = self.bert(
             input_txt,
@@ -1607,8 +1608,9 @@ class VILBertForVLTasks(BertPreTrainedModel):
             rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist(), clean_up_tokenization_spaces=False, skip_special_tokens=True)
             # rationale_text = rationale_text[: rationale_text.find(self.gpt2_tokenizer)]
 
-            logger.info("Generated rationale: {}".format(text))
-            logger.info("Gold rationale: {}".format(rationale_text))
+            pred_ans = torch.argmax(vil_probs[0]).item()
+            logger.info("[Img ID: {}] Predicted Ans: {} \t| Gold rationale: {}  \
+                        | Generated rationale: {}".format((question_id - 1000000).item(), pred_ans, rationale_text, text))
 
             references=[]
             hypotheses=[]

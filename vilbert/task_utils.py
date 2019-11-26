@@ -54,7 +54,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     with torch.no_grad():
-         outs = model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate)
+         outs = model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate, question_id=question_id)
 
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = outs[:8]
 
