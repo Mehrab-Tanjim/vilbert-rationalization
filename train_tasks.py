@@ -53,23 +53,14 @@ class ViLBertGPT2(nn.Module):
         self.vilbert_model = vilbert
 
     def forward(self, rationale_text_label, generate, q_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options, freeze=-1):
-        if freeze == 1:
-            with torch.no_grad():
-                outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
-            gpt2_inp, pred_ans = outs[7:]
-            gpt2_inp = self.embed(gpt2_inp)
-            gpt2_inputs = (gpt2_inp, rationale_text_label)
-            gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
-            gpt2_loss = gpt2_outputs[0]
-
-        else:
+        with torch.no_grad():
             outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
-            gpt2_inp, pred_ans = outs[7:]
-            with torch.no_grad():
-                gpt2_inp = self.embed(gpt2_inp)
-                gpt2_inputs = (gpt2_inp, rationale_text_label)
-                gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
-                gpt2_loss = gpt2_outputs[0]
+
+        gpt2_inp, pred_ans = outs[7:]
+        gpt2_inp = self.embed(gpt2_inp)
+        gpt2_inputs = (gpt2_inp, rationale_text_label)
+        gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
+        gpt2_loss = gpt2_outputs[0]
 
         to_return = outs[:7] + (gpt2_loss,)
 
@@ -349,7 +340,7 @@ def main():
             task = 'TASK' + task_id
             task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl'])
             task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
-            task_cfg[task]['batch_size'] = 5
+            task_cfg[task]['batch_size'] = 48
 
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
@@ -518,10 +509,7 @@ def main():
                         loss_vl = loss_vl / args.gradient_accumulation_steps
                         gpt2_loss = gpt2_loss / args.gradient_accumulation_steps
 
-                    if freeze==1:
-                        gpt2_loss.backward()
-                    else:
-                        loss_vl.backward()
+                    gpt2_loss.backward()
 
                     if (step + 1) % args.gradient_accumulation_steps == 0:
                         optimizer.step()
