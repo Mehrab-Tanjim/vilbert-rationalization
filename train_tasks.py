@@ -52,14 +52,24 @@ class ViLBertGPT2(nn.Module):
         self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=self.gpt2_config)
         self.vilbert_model = vilbert
 
-    def forward(self, rationale_text_label, generate, q_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options):
-        outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
-        gpt2_inp, pred_ans = outs[7:]
+    def forward(self, rationale_text_label, generate, q_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options, freeze=-1):
+        if freeze == 1:
+            with torch.no_grad():
+                outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+            gpt2_inp, pred_ans = outs[7:]
+            gpt2_inp = self.embed(gpt2_inp)
+            gpt2_inputs = (gpt2_inp, rationale_text_label)
+            gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
+            gpt2_loss = gpt2_outputs[0]
 
-        gpt2_inp = self.embed(gpt2_inp)
-        gpt2_inputs = (gpt2_inp, rationale_text_label)
-        gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
-        gpt2_loss = gpt2_outputs[0]
+        else:
+            outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+            gpt2_inp, pred_ans = outs[7:]
+            with torch.no_grad():
+                gpt2_inp = self.embed(gpt2_inp)
+                gpt2_inputs = (gpt2_inp, rationale_text_label)
+                gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
+                gpt2_loss = gpt2_outputs[0]
 
         to_return = outs[:7] + (gpt2_loss,)
 
@@ -339,7 +349,7 @@ def main():
             task = 'TASK' + task_id
             task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl'])
             task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
-            task_cfg[task]['batch_size'] = 4
+            task_cfg[task]['batch_size'] = 5
 
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
@@ -371,8 +381,6 @@ def main():
             args.from_pretrained, config, num_labels=num_labels, default_gpu=default_gpu
             )
 
-    for param in vil_model.parameters():
-        param.requires_grad = False
     model = ViLBertGPT2(vil_model, gpt2_tokenizer, gpt2_embed_dim=768, config=config)
     task_losses = LoadLosses(args, task_cfg, args.tasks.split('-'))
     model.to(device)
@@ -491,12 +499,13 @@ def main():
     task_count = {name:0 for name in task_ids}
     for epochId in tqdm(range(args.num_train_epochs), desc="Epoch"):
         model.train()
+        freeze = -1
         for step in range(max_num_iter):
             iterId = startIterID + step + (epochId * max_num_iter)
             for task_id in task_ids:
                 if iterId >= task_start_iter[task_id]:
                 # if iterId % task_interval[task_id] == 0:
-                    loss_vl, gpt2_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter)
+                    loss_vl, gpt2_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, freeze=freeze)
 
                     loss = loss_vl + gpt2_loss
 
@@ -509,8 +518,10 @@ def main():
                         loss_vl = loss_vl / args.gradient_accumulation_steps
                         gpt2_loss = gpt2_loss / args.gradient_accumulation_steps
 
-
-                    gpt2_loss.backward()
+                    if freeze==1:
+                        gpt2_loss.backward()
+                    else:
+                        loss_vl.backward()
 
                     if (step + 1) % args.gradient_accumulation_steps == 0:
                         optimizer.step()
@@ -519,6 +530,7 @@ def main():
                         if default_gpu:
                             tbLogger.step_train(epochId, iterId, float(loss), float(loss_vl), float(gpt2_loss), float(score), optimizer.show_lr(), task_id, 'train')
 
+                    freeze = freeze * -1
             if step % (20 * args.gradient_accumulation_steps) == 0 and step != 0 and default_gpu:
                 tbLogger.showLossTrain()
 

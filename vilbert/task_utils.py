@@ -25,7 +25,7 @@ LossMap = {'BCEWithLogitLoss': nn.BCEWithLogitsLoss(reduction='mean'),
 # Use tokenizer.max_len_single_sentence for max sequence legth for gpt2
 # Also, remember that there's no start token prepended automatically.
 
-def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=False):
+def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=False, freeze=-1):
     batch = tuple(t.cuda(device=device, non_blocking=True) for t in batch)
     features, spatials, image_mask, question, rationale, target, input_mask, segment_ids, co_attention_mask, question_id = batch
     batch_size = features.size(0)
@@ -54,7 +54,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     with torch.no_grad():
-         outs = model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+         outs = model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, freeze=freeze)
 
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = outs[:8]
 
@@ -83,7 +83,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
 
     return to_return
 
-def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, generate=False):
+def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, generate=False, freeze=-1):
     # given the current task, decided whether to forward the model and forward with specific loss.
 
     # reset the task iteration when needed.
@@ -121,7 +121,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
 
     # get the model output
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
-            model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+            model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, freeze=freeze)
 
     # for different task, we use different output to calculate the loss.
     if task_cfg[task_id]['type'] == 'VL-classifier':
