@@ -339,7 +339,7 @@ def main():
             task = 'TASK' + task_id
             task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl'])
             task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
-            task_cfg[task]['batch_size'] = 4
+            task_cfg[task]['batch_size'] = 16
 
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
