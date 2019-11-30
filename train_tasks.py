@@ -11,6 +11,7 @@ from bisect import bisect
 import yaml
 from easydict import EasyDict as edict
 
+import sacrebleu
 import pdb
 import sys
 import torch
@@ -28,6 +29,8 @@ from torch.optim.lr_scheduler import LambdaLR, ReduceLROnPlateau
 import vilbert.utils as utils
 import torch.distributed as dist
 from transformers import GPT2Tokenizer
+from vilbert.gpt2_rationale import sample_sequence
+from transformers import GPT2Config, GPT2LMHeadModel
 
 gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', do_lower_case=True)
 
@@ -37,6 +40,62 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+class ViLBertGPT2(nn.Module):
+
+    def __init__(self, vilbert, gpt2_tokenizer, gpt2_embed_dim=768, config=None):
+        nn.Module.__init__(self)
+        self.gpt2_tokenizer = gpt2_tokenizer
+        self.gpt2_embed_dim = gpt2_embed_dim
+        self.embed = torch.nn.Linear(config.bi_hidden_size, self.gpt2_embed_dim)
+        self.gpt2_config = GPT2Config.from_pretrained('gpt2')
+        self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=self.gpt2_config)
+        self.vilbert_model = vilbert
+
+    def forward(self, rationale_text_label, generate, q_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options):
+        outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+        gpt2_inp, pred_ans = outs[7:]
+
+        gpt2_inp = self.embed(gpt2_inp)
+        gpt2_inputs = (gpt2_inp, rationale_text_label)
+        gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
+        gpt2_loss = gpt2_outputs[0]
+
+        to_return = outs[:7] + (gpt2_loss,)
+
+        if generate:
+            out = sample_sequence(
+                    model=self.gpt2_model,
+                    context=gpt2_inp,
+                    length=30, #TODO 3 * (self._max_caption_length//4
+                    temperature=1, #TODO change here
+            )
+
+            first_rat = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
+
+            text = self.gpt2_tokenizer.decode(first_rat, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+            # text = text[: text.find(self.gpt2_tokenizer.stop_token)]
+
+            rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist(), clean_up_tokenization_spaces=False, skip_special_tokens=True)
+            # rationale_text = rationale_text[: rationale_text.find(self.gpt2_tokenizer)]
+
+            q_id_f = (q_id[0] - 1000000).item()
+            pred_ans_f = pred_ans[0].item()
+            logger.info("[Img ID: {}] Predicted Ans: {} \t| Gold rationale: {} | Generated rationale: {}".format(q_id_f, pred_ans_f, rationale_text, text))
+
+            references=[]
+            hypotheses=[]
+
+            for rat_ids, gen_ids in zip(rationale_text_label.tolist(), out.tolist()):
+                rat_dec = self.gpt2_tokenizer.decode(rat_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+                gen_dec = self.gpt2_tokenizer.decode(gen_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
+                references.append(rat_dec)
+                hypotheses.append(gen_dec)
+
+            bleu_score=sacrebleu.raw_corpus_bleu(hypotheses, [references], .01).score
+            to_return = to_return + (bleu_score,)
+
+        return to_return
 
 def main():
     parser = argparse.ArgumentParser()
@@ -280,7 +339,7 @@ def main():
             task = 'TASK' + task_id
             task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl'])
             task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
-            task_cfg[task]['batch_size'] = 2
+            task_cfg[task]['batch_size'] = 4
 
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
@@ -304,15 +363,17 @@ def main():
         task_interval[task_id] = num_train_optimization_steps // (task_cfg[task]['num_epoch'] * num_iter // args.gradient_accumulation_steps)
 
     if args.baseline:
-        model = BaseBertForVLTasks.from_pretrained(
+        vil_model = BaseBertForVLTasks.from_pretrained(
             args.from_pretrained, config, num_labels=num_labels, default_gpu=default_gpu
             )
     else:
-        model = VILBertForVLTasks.from_pretrained(
+        vil_model = VILBertForVLTasks.from_pretrained(
             args.from_pretrained, config, num_labels=num_labels, default_gpu=default_gpu
             )
-        model.assign_tockenizer(gpt2_tokenizer)
 
+    for param in vil_model.parameters():
+        param.requires_grad = False
+    model = ViLBertGPT2(vil_model, gpt2_tokenizer, gpt2_embed_dim=768, config=config)
     task_losses = LoadLosses(args, task_cfg, args.tasks.split('-'))
     model.to(device)
     if args.local_rank != -1:
@@ -449,7 +510,7 @@ def main():
                         gpt2_loss = gpt2_loss / args.gradient_accumulation_steps
 
 
-                    loss.backward()
+                    gpt2_loss.backward()
 
                     if (step + 1) % args.gradient_accumulation_steps == 0:
                         optimizer.step()
@@ -465,6 +526,8 @@ def main():
         # when run evaluate, we run each task sequentially.
         for task_id in task_ids:
             num_batch_10 = int(0.1*len(task_dataloader_val[task_id]))
+            if args.debug:
+                num_batch_10=1
             for i, batch in enumerate(task_dataloader_val[task_id]):
                 # generate
                 if i%num_batch_10==0:

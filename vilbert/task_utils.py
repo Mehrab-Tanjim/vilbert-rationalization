@@ -54,7 +54,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     with torch.no_grad():
-         outs = model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, generate=generate, question_id=question_id)
+         outs = model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = outs[:8]
 
@@ -83,7 +83,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
 
     return to_return
 
-def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter):
+def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, generate=False):
     # given the current task, decided whether to forward the model and forward with specific loss.
 
     # reset the task iteration when needed.
@@ -121,7 +121,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
 
     # get the model output
     vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
-            model(question, features, spatials, rationale, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+            model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
     # for different task, we use different output to calculate the loss.
     if task_cfg[task_id]['type'] == 'VL-classifier':

@@ -24,7 +24,6 @@ import shutil
 import tarfile
 import tempfile
 import sys
-import sacrebleu
 from io import open
 
 import torch
@@ -1520,11 +1519,6 @@ class VILBertForVLTasks(BertPreTrainedModel):
         self.linguisic_logit = nn.Linear(config.hidden_size, 1)
         self.fusion_method = config.fusion_method
         self.apply(self.init_bert_weights)
-        self.config = config
-        self.gpt2_embed_dim = 768
-        self.embed = torch.nn.Linear(config.bi_hidden_size, self.gpt2_embed_dim)
-        gpt2_config = GPT2Config.from_pretrained('gpt2')
-        self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=gpt2_config)
 
     def assign_tockenizer(self, gpt2_tokenizer):
         self.gpt2_tokenizer = gpt2_tokenizer
@@ -1534,15 +1528,12 @@ class VILBertForVLTasks(BertPreTrainedModel):
         input_txt,
         input_imgs,
         image_loc,
-        rationale_text_label,
         token_type_ids=None,
         attention_mask=None,
         image_attention_mask=None,
         co_attention_mask=None,
         output_all_encoded_layers=False,
         num_options=0,
-        generate = False,
-        question_id = -1
     ):
         sequence_output_t, sequence_output_v, pooled_output_t, pooled_output_v, _ = self.bert(
             input_txt,
@@ -1586,42 +1577,8 @@ class VILBertForVLTasks(BertPreTrainedModel):
         vil_probs = F.softmax(vil_logit_per_options, dim=-1)
         pooled_output_per_options = pooled_output.view(-1, num_options, self.config.bi_hidden_size)
         gpt2_inp = torch.einsum('ba,bad->bd', (vil_probs, pooled_output_per_options))
-        gpt2_inp = self.embed(gpt2_inp)
-        gpt2_inputs = (gpt2_inp, rationale_text_label)
-        gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
-        gpt2_loss = gpt2_outputs[0]
-
-        to_return = (vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss)
-
-        if generate:
-            out = sample_sequence(
-                    model=self.gpt2_model,
-                    context=gpt2_inp,
-                    length=30, #TODO 3 * (self._max_caption_length//4
-                    temperature=1, #TODO change here
-            )
-            first_rat = out[0].tolist() #TODO changed from out[0, len(context_tokens):].tolist()
-
-            text = self.gpt2_tokenizer.decode(first_rat, clean_up_tokenization_spaces=False, skip_special_tokens=True)
-            # text = text[: text.find(self.gpt2_tokenizer.stop_token)]
-
-            rationale_text = self.gpt2_tokenizer.decode(rationale_text_label[0].tolist(), clean_up_tokenization_spaces=False, skip_special_tokens=True)
-            # rationale_text = rationale_text[: rationale_text.find(self.gpt2_tokenizer)]
-
-            pred_ans = torch.argmax(vil_probs[0]).item()
-            logger.info("[Img ID: {}] Predicted Ans: {} \t| Gold rationale: {} | Generated rationale: {}".format((question_id[0] - 1000000).item(), pred_ans, rationale_text, text))
-
-            references=[]
-            hypotheses=[]
-
-            for rat_ids, gen_ids in zip(rationale_text_label.tolist(), out.tolist()):
-                rat_dec = self.gpt2_tokenizer.decode(rat_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
-                gen_dec = self.gpt2_tokenizer.decode(gen_ids, clean_up_tokenization_spaces=False, skip_special_tokens=True)
-                references.append(rat_dec)
-                hypotheses.append(gen_dec)
-
-            bleu_score=sacrebleu.raw_corpus_bleu(hypotheses, [references], .01).score
-            to_return = to_return + (bleu_score,)
+        pred_ans = torch.argmax(vil_probs, dim=-1)
+        to_return = (vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_inp, pred_ans)
 
         return to_return
 
