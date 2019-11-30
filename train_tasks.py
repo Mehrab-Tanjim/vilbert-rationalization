@@ -32,8 +32,6 @@ from transformers import GPT2Tokenizer
 from vilbert.gpt2_rationale import sample_sequence
 from transformers import GPT2Config, GPT2LMHeadModel
 
-gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', do_lower_case=True)
-
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
@@ -342,9 +340,16 @@ def main():
             task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
             task_cfg[task]['batch_size'] = 48
 
+    if args.local_rank not in [-1, 0]:
+        torch.distributed.barrier()  # Barrier to make sure only the first process in distributed training download model & vocab
+
+    gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2', do_lower_case=True)
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
             task_dataloader_train, task_dataloader_val = LoadDatasets(args, task_cfg, gpt2_tokenizer, args.tasks.split('-'), args.debug)
+
+    if args.local_rank == 0:
+        torch.distributed.barrier()  # End of barrier to make sure only the first process in distributed training download model & vocab
 
     tbLogger = utils.tbLogger(logPath, savePath, task_names, task_ids, task_num_iters, args.gradient_accumulation_steps)
 
@@ -363,6 +368,9 @@ def main():
         task_start_iter[task_id] = num_train_optimization_steps - (task_cfg[task]['num_epoch'] * num_iter // args.gradient_accumulation_steps)
         task_interval[task_id] = num_train_optimization_steps // (task_cfg[task]['num_epoch'] * num_iter // args.gradient_accumulation_steps)
 
+    if args.local_rank not in [-1, 0]:
+        torch.distributed.barrier()  # Barrier to make sure only the first process in distributed training download model & vocab
+
     if args.baseline:
         vil_model = BaseBertForVLTasks.from_pretrained(
             args.from_pretrained, config, num_labels=num_labels, default_gpu=default_gpu
@@ -373,8 +381,12 @@ def main():
             )
 
     model = ViLBertGPT2(vil_model, gpt2_tokenizer, gpt2_embed_dim=768, config=config)
-    task_losses = LoadLosses(args, task_cfg, args.tasks.split('-'))
     model.to(device)
+
+    if args.local_rank == 0:
+        torch.distributed.barrier()  # End of barrier to make sure only the first process in distributed training download model & vocab
+
+    task_losses = LoadLosses(args, task_cfg, args.tasks.split('-'))
     if args.local_rank != -1:
         try:
             from apex.parallel import DistributedDataParallel as DDP
