@@ -474,7 +474,8 @@ def main():
                     generate = False
                     loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
 
-                loss = loss_vl + gpt2_loss
+                lamb=0.67
+                loss = lamb * loss_vl + (1-lamb) * gpt2_loss
                 tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), bleu_score, task_id, batch_size, 'val')
 
                 if default_gpu:
