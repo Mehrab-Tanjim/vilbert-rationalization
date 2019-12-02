@@ -17,6 +17,7 @@ import sys
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from torch.nn import Parameter
 
 from pytorch_pretrained_bert.optimization import WarmupLinearSchedule
 
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 class ViLBertGPT2(nn.Module):
 
-    def __init__(self, vilbert, gpt2_tokenizer, gpt2_embed_dim=768, config=None):
+    def __init__(self, vilbert, gpt2_tokenizer, gpt2_embed_dim=768, config=None, device='cpu'):
         nn.Module.__init__(self)
         self.gpt2_tokenizer = gpt2_tokenizer
         self.gpt2_embed_dim = gpt2_embed_dim
@@ -49,18 +50,18 @@ class ViLBertGPT2(nn.Module):
         self.gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=self.gpt2_config)
         self.vilbert_model = vilbert
+        self.log_vars = Parameter(torch.tensor([0, 0], requires_grad=True, dtype=torch.float32).to(device=device))
 
     def forward(self, rationale_text_label, generate, q_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options, freeze=-1):
-        with torch.no_grad():
-            outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+        outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
         gpt2_inp, pred_ans = outs[7:]
         gpt2_inp = self.embed(gpt2_inp)
         gpt2_inputs = (gpt2_inp, rationale_text_label)
-        gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
-        gpt2_loss = gpt2_outputs[0]
+        gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label, log_var=self.log_vars[1])
+        gpt2_loss, gpt2_loss_var = gpt2_outputs[:2]
 
-        to_return = outs[:7] + (gpt2_loss,)
+        to_return = outs[:7] + (self.log_vars[0], gpt2_loss, gpt2_loss_var)
 
         if generate:
             out = sample_sequence(
@@ -338,7 +339,7 @@ def main():
             task = 'TASK' + task_id
             task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl'])
             task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
-            task_cfg[task]['batch_size'] = 48
+            task_cfg[task]['batch_size'] = 4
 
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Barrier to make sure only the first process in distributed training download model & vocab
@@ -508,27 +509,34 @@ def main():
             for task_id in task_ids:
                 if iterId >= task_start_iter[task_id]:
                 # if iterId % task_interval[task_id] == 0:
-                    loss_vl, gpt2_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, freeze=freeze)
+                    loss_vl, loss_vl_var, gpt2_loss, gpt2_loss_var, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, freeze=freeze)
 
                     loss = loss_vl + gpt2_loss
+                    loss_var = loss_vl_var + gpt2_loss_var
 
                     loss = loss * loss_scale[task_id]
+                    loss_var = loss_var * loss_scale[task_id]
                     loss_vl = loss_vl * loss_scale[task_id]
+                    loss_vl_var = loss_vl_var * loss_scale[task_id]
                     gpt2_loss = gpt2_loss * loss_scale[task_id]
+                    gpt2_loss_var = gpt2_loss_var * loss_scale[task_id]
 
                     if args.gradient_accumulation_steps > 1:
                         loss = loss / args.gradient_accumulation_steps
+                        loss_var = loss_var / args.gradient_accumulation_steps
                         loss_vl = loss_vl / args.gradient_accumulation_steps
+                        loss_vl_var = loss_vl_var / args.gradient_accumulation_steps
                         gpt2_loss = gpt2_loss / args.gradient_accumulation_steps
+                        gpt2_loss_var = gpt2_loss_var / args.gradient_accumulation_steps
 
-                    gpt2_loss.backward()
+                    loss_var.backward()
 
                     if (step + 1) % args.gradient_accumulation_steps == 0:
                         optimizer.step()
                         model.zero_grad()
 
                         if default_gpu:
-                            tbLogger.step_train(epochId, iterId, float(loss), float(loss_vl), float(gpt2_loss), float(score), optimizer.show_lr(), task_id, 'train')
+                            tbLogger.step_train(epochId, iterId, float(loss), float(loss_var), float(loss_vl), float(loss_vl_var), float(gpt2_loss), float(gpt2_loss_var), float(score), optimizer.show_lr(), task_id, 'train')
 
                     freeze = freeze * -1
             if step % (20 * args.gradient_accumulation_steps) == 0 and step != 0 and default_gpu:
@@ -544,13 +552,14 @@ def main():
                 # generate
                 if i%num_batch_10==0:
                     generate = True
-                    loss_vl, gpt2_loss, score, batch_size, bleu_score = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
+                    loss_vl, loss_vl_var, gpt2_loss, gpt2_loss_var, score, batch_size, bleu_score = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
                 else:
                     generate = False
-                    loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
+                    loss_vl, loss_vl_var, gpt2_loss, gpt2_loss_var, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
 
                 loss = loss_vl + gpt2_loss
-                tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), bleu_score, task_id, batch_size, 'val')
+                loss_var = loss_vl_var + gpt2_loss_var
+                tbLogger.step_val(epochId, float(loss), float(loss_var), float(loss_vl), float(loss_vl_var), float(gpt2_loss), float(gpt2_loss_var), float(score), bleu_score, task_id, batch_size, 'val')
 
                 if default_gpu:
                     sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))

@@ -536,7 +536,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
                                    self.transformer.wte)
 
     def forward(self, inputs, past=None, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
-                labels=None):
+                labels=None, log_var=None):
         transformer_outputs = self.transformer(inputs,
                                                past=past,
                                                attention_mask=attention_mask,
@@ -556,7 +556,9 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
             loss_fct = CrossEntropyLoss(ignore_index=-1)
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)),
                             shift_labels.view(-1))
-            outputs = (loss,) + outputs
+            loss_var = loss_fct(torch.exp(-log_var)*shift_logits.view(-1, shift_logits.size(-1)),
+                            shift_labels.view(-1))
+            outputs = (loss, loss_var) + outputs
 
         return outputs  # (loss), lm_logits, presents, (all hidden_states), (attentions)
 
