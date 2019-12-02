@@ -547,7 +547,7 @@ def main():
         for task_id in task_ids:
             num_batch_10 = int(0.1*len(task_dataloader_val[task_id]))
             if args.debug:
-                num_batch_10=1
+                num_batch_10=2
             for i, batch in enumerate(task_dataloader_val[task_id]):
                 # generate
                 if i%num_batch_10==0:

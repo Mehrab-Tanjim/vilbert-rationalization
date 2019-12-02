@@ -56,7 +56,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
     with torch.no_grad():
          outs = model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, freeze=freeze)
 
-    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, log_var, gpt2_loss, gpt2_loss_var = outs[:-1]
+    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, log_var, gpt2_loss, gpt2_loss_var = outs[:10]
 
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
