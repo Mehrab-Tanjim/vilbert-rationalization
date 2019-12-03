@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 class ViLBertGPT2(nn.Module):
 
-    def __init__(self, vilbert, gpt2_tokenizer, gpt2_embed_dim=768, config=None):
+    def __init__(self, vilbert_trained, vilbert, gpt2_tokenizer, gpt2_embed_dim=768, config=None):
         nn.Module.__init__(self)
         self.gpt2_tokenizer = gpt2_tokenizer
         self.gpt2_embed_dim = gpt2_embed_dim
@@ -49,8 +49,13 @@ class ViLBertGPT2(nn.Module):
         self.gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2', from_tf=False, config=self.gpt2_config)
         self.vilbert_model = vilbert
+        self.vilbert_trained = vilbert_trained
 
     def forward(self, rationale_text_label, generate, q_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options, freeze=-1):
+        with torch.no_grad():
+            outs_trained = self.vilbert_trained(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
+        vil_logits_trained = outs_trained[1]
+
         outs = self.vilbert_model(question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options)
 
         gpt2_inp, pred_ans = outs[7:]
@@ -59,7 +64,7 @@ class ViLBertGPT2(nn.Module):
         gpt2_outputs = self.gpt2_model(gpt2_inputs, labels=rationale_text_label)
         gpt2_loss = gpt2_outputs[0]
 
-        to_return = outs[:7] + (gpt2_loss,)
+        to_return = outs[:7] + (vil_logits_trained, gpt2_loss,)
 
         if generate:
             out = sample_sequence(
@@ -111,6 +116,13 @@ def main():
         type=str,
         help="Bert pre-trained model selected in the list: bert-base-uncased, "
         "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.",
+    )
+    parser.add_argument(
+        "--from_teacher",
+        default="pytorch_19.bin",
+        type=str,
+        help="Trained VILBert model, "
+        "pytrochj_19.bin.",
     )
     parser.add_argument(
         "--output_dir",
@@ -337,7 +349,7 @@ def main():
             task = 'TASK' + task_id
             task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl'])
             task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
-            task_cfg[task]['batch_size'] = 6
+            task_cfg[task]['batch_size'] = 4
 
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Barrier to make sure only the first process in distributed training download model & vocab
@@ -374,12 +386,18 @@ def main():
         vil_model = BaseBertForVLTasks.from_pretrained(
             args.from_pretrained, config, num_labels=num_labels, default_gpu=default_gpu
             )
+        vil_trained = BaseBertForVLTasks.from_pretrained(
+            args.from_teacher, config, num_labels=num_labels, default_gpu=default_gpu
+            )
     else:
         vil_model = VILBertForVLTasks.from_pretrained(
             args.from_pretrained, config, num_labels=num_labels, default_gpu=default_gpu
             )
+        vil_trained = VILBertForVLTasks.from_pretrained(
+            args.from_teacher, config, num_labels=num_labels, default_gpu=default_gpu
+            )
 
-    model = ViLBertGPT2(vil_model, gpt2_tokenizer, gpt2_embed_dim=768, config=config)
+    model = ViLBertGPT2(vil_trained, vil_model, gpt2_tokenizer, gpt2_embed_dim=768, config=config)
     model.to(device)
 
     if args.local_rank == 0:
@@ -499,7 +517,6 @@ def main():
     # initialize the data iteration.
     task_iter_train = {name:None for name in task_ids}
     task_count = {name:0 for name in task_ids}
-    lam = 0.75
     for epochId in tqdm(range(args.num_train_epochs), desc="Epoch"):
         model.train()
         freeze = -1
@@ -508,18 +525,20 @@ def main():
             for task_id in task_ids:
                 if iterId >= task_start_iter[task_id]:
                 # if iterId % task_interval[task_id] == 0:
-                    loss_vl, gpt2_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, freeze=freeze)
+                    loss_vl, gpt2_loss, kld_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, freeze=freeze)
 
-                    loss = lam * loss_vl + (1-lam) * gpt2_loss
+                    loss = loss_vl + gpt2_loss + kld_loss
 
                     loss = loss * loss_scale[task_id]
                     loss_vl = loss_vl * loss_scale[task_id]
                     gpt2_loss = gpt2_loss * loss_scale[task_id]
+                    kld_loss = kld_loss * loss_scale[task_id]
 
                     if args.gradient_accumulation_steps > 1:
                         loss = loss / args.gradient_accumulation_steps
                         loss_vl = loss_vl / args.gradient_accumulation_steps
                         gpt2_loss = gpt2_loss / args.gradient_accumulation_steps
+                        kld_loss = kld_loss / args.gradient_accumulation_steps
 
                     loss.backward()
 
@@ -528,7 +547,7 @@ def main():
                         model.zero_grad()
 
                         if default_gpu:
-                            tbLogger.step_train(epochId, iterId, float(loss), float(loss_vl), float(gpt2_loss), float(score), optimizer.show_lr(), task_id, 'train')
+                            tbLogger.step_train(epochId, iterId, float(loss), float(loss_vl), float(gpt2_loss), float(kld_loss), float(score), optimizer.show_lr(), task_id, 'train')
 
                     freeze = freeze * -1
             if step % (20 * args.gradient_accumulation_steps) == 0 and step != 0 and default_gpu:
@@ -539,17 +558,17 @@ def main():
         for task_id in task_ids:
             num_batch_10 = int(0.1*len(task_dataloader_val[task_id]))
             if args.debug:
-                num_batch_10=1
+                num_batch_10=2
             for i, batch in enumerate(task_dataloader_val[task_id]):
                 # generate
                 if i%num_batch_10==0:
                     generate = True
-                    loss_vl, gpt2_loss, score, batch_size, bleu_score = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
+                    loss_vl, gpt2_loss, kld_loss, score, batch_size, bleu_score = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
                 else:
                     generate = False
-                    loss_vl, gpt2_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
+                    loss_vl, gpt2_loss, kld_loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses, generate=generate)
 
-                loss = lam * loss_vl + (1-lam) * gpt2_loss
+                loss = loss_vl + gpt2_loss
                 tbLogger.step_val(epochId, float(loss), float(loss_vl), float(gpt2_loss), float(score), bleu_score, task_id, batch_size, 'val')
 
                 if default_gpu:

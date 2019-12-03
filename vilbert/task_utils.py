@@ -56,7 +56,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
     with torch.no_grad():
          outs = model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, freeze=freeze)
 
-    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = outs[:8]
+    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, vil_logits_trained, gpt2_loss = outs[:9]
 
     if task_cfg[task_id]['type'] == 'VL-classifier':
         loss = task_losses[task_id](vil_prediction, target)
@@ -65,9 +65,11 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
 
     elif task_cfg[task_id]['type'] == 'VL-logit':
         vil_logit = vil_logit.view(batch_size, num_options)
+        vil_logits_trained = vil_logits_trained.view(batch_size, num_options)
         loss = task_losses[task_id](vil_logit, target)
         _, preds = torch.max(vil_logit, 1)
         batch_score = (preds == target).sum()
+        kld_loss = nn.KLDivLoss()(F.log_softmax(vil_logit, dim=1), F.softmax(vil_logits_trained, dim=1))
 
     elif task_cfg[task_id]['type'] == 'V-logit':
         loss = task_losses[task_id](vision_logit, target)
@@ -76,7 +78,7 @@ def ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses,
         select_target = target.squeeze(2).gather(1, select_idx.view(-1,1))
         batch_score = torch.sum(select_target>0.5).item()
 
-    to_return = float(loss), float(gpt2_loss), float(batch_score), batch_size
+    to_return = float(loss), float(gpt2_loss), float(kld_loss), float(batch_score), batch_size
     if generate:
         bleu_score = outs[-1]
         to_return = to_return + (bleu_score,)
@@ -120,7 +122,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
 
     # get the model output
-    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, gpt2_loss = \
+    vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, vil_logits_trained, gpt2_loss = \
             model(rationale, generate, question_id, question, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, num_options=num_options, freeze=freeze)
 
     # for different task, we use different output to calculate the loss.
@@ -131,10 +133,11 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
 
     elif task_cfg[task_id]['type'] == 'VL-logit':
         vil_logit = vil_logit.view(batch_size, num_options)
+        vil_logits_trained = vil_logits_trained.view(batch_size, num_options)
         loss = task_losses[task_id](vil_logit, target)
         _, preds = torch.max(vil_logit, 1)
         batch_score = float((preds == target).sum()) / float(batch_size)
-        loss = task_losses[task_id](vil_logit, target)
+        kld_loss = nn.KLDivLoss()(F.log_softmax(vil_logit, dim=1), F.softmax(vil_logits_trained, dim=1))
         # gpt2_loss = gpt2_loss
 
     elif task_cfg[task_id]['type'] == 'V-logit':
@@ -144,7 +147,7 @@ def ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_tr
         select_target = target.squeeze(2).gather(1, select_idx.view(-1,1))
         batch_score = float(torch.sum(select_target>0.5)) / batch_size
 
-    return loss, gpt2_loss, batch_score
+    return loss, gpt2_loss, kld_loss, batch_score
 
 
 def LoadLosses(args, task_cfg, task_ids):

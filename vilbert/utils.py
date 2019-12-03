@@ -60,6 +60,9 @@ class tbLogger(object):
         self.gpt2_loss = 0
         self.gpt2_loss_tmp = 0
 
+        self.kld_loss = 0
+        self.kld_loss_tmp = 0
+
         self.task_score_tmp = {task_id:0 for task_id in task_ids}
         self.task_norm_tmp = {task_id:0 for task_id in task_ids}
         self.task_step = {task_id:0 for task_id in task_ids}
@@ -84,7 +87,7 @@ class tbLogger(object):
         if self.save_logger:
             self.logger.add_scalar(split + "/" + key, val, step)
 
-    def step_train(self, epochId, stepId, loss, loss_vl, gpt2_loss, score, norm, task_id, split):
+    def step_train(self, epochId, stepId, loss, loss_vl, gpt2_loss, kld_loss, score, norm, task_id, split):
         self.task_loss[task_id] += loss
         self.task_loss_tmp[task_id] += loss
 
@@ -93,6 +96,9 @@ class tbLogger(object):
 
         self.gpt2_loss += gpt2_loss
         self.gpt2_loss_tmp += gpt2_loss
+
+        self.kld_loss += kld_loss
+        self.kld_loss_tmp += kld_loss
 
         self.task_score_tmp[task_id] += score
         self.task_norm_tmp[task_id] += norm
@@ -104,6 +110,7 @@ class tbLogger(object):
         self.linePlot(stepId, loss, split, self.task_id2name[task_id] + '_loss')
         self.linePlot(stepId, loss_vl, split, self.task_id2name[task_id] + '_vl_loss')
         self.linePlot(stepId, gpt2_loss, split, self.task_id2name[task_id] + '_gpt2_loss')
+        self.linePlot(stepId, kld_loss, split, self.task_id2name[task_id] + '_kld_loss')
 
         self.linePlot(stepId, score, split, self.task_id2name[task_id] + '_score')
 
@@ -157,11 +164,12 @@ class tbLogger(object):
         for task_id in self.task_ids:
             if self.task_num_iters[task_id] > 0:
                 if self.task_step_tmp[task_id]:
-                    lossInfo += '[%s]: iter %d Ep: %.2f loss %.3f loss_vl %.3f loss_gpt2 %.3f score %.3f lr %.6g ' %(self.task_id2name[task_id], \
+                    lossInfo += '[%s]: iter %d Ep: %.2f loss %.3f loss_vl %.3f loss_gpt2 %.3f loss_kld %.3f score %.3f lr %.6g ' %(self.task_id2name[task_id], \
                         self.task_step[task_id], self.task_step[task_id] / float(self.task_num_iters[task_id]), \
                                             self.task_loss_tmp[task_id] / float(self.task_step_tmp[task_id]), \
                                             self.loss_vl_tmp / float(self.task_step_tmp[task_id]), \
                                             self.gpt2_loss_tmp / float(self.task_step_tmp[task_id]), \
+                                            self.kld_loss_tmp / float(self.task_step_tmp[task_id]), \
                                             self.task_score_tmp[task_id] / float(self.task_step_tmp[task_id]), \
                                             self.task_norm_tmp[task_id] / float(self.task_step_tmp[task_id]))
 
@@ -172,6 +180,7 @@ class tbLogger(object):
         self.task_loss_tmp = {task_id:0 for task_id in self.task_ids}
         self.loss_vl_tmp  = 0
         self.gpt2_loss_tmp = 0
+        self.kld_loss_tmp = 0
         self.task_score_tmp =  {task_id:0 for task_id in self.task_ids}
         self.task_norm_tmp = {task_id:0 for task_id in self.task_ids}
 
