@@ -120,7 +120,7 @@ def main():
         "--save_name",
         default='',
         type=str,
-        help="save name for training.", 
+        help="save name for training.",
     )
     parser.add_argument(
         "--use_chunk", default=0, type=float, help="whether use chunck for parallel training."
@@ -135,7 +135,7 @@ def main():
         "--tasks", default='', type=str, help="1-2-3... training task separate by -"
     )
     parser.add_argument(
-        "--freeze", default = -1, type=int, 
+        "--freeze", default = -1, type=int,
         help="till which layer of textual stream of vilbert need to fixed."
     )
     parser.add_argument(
@@ -146,7 +146,7 @@ def main():
     )
     parser.add_argument(
         "--lr_scheduler", default='mannul', type=str, help="whether use learning rate scheduler."
-    )  
+    )
     parser.add_argument(
         "--baseline", action="store_true", help="whether use single stream baseline."
     )
@@ -187,7 +187,7 @@ def main():
         from vilbert.basebert import BaseBertForVLTasks
     elif args.compact:
         from vilbert.vilbert_compact import BertConfig
-        from vilbert.vilbert_compact import VILBertForVLTasks        
+        from vilbert.vilbert_compact import VILBertForVLTasks
     else:
         from vilbert.vilbert import BertConfig
         from vilbert.vilbert import VILBertForVLTasks
@@ -225,7 +225,7 @@ def main():
         n_gpu = 1
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend="nccl")
-    
+
     logger.info(
         "device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}".format(
             device, n_gpu, bool(args.local_rank != -1), args.fp16
@@ -246,7 +246,7 @@ def main():
 
     config = BertConfig.from_json_file(args.config_file)
     if default_gpu:
-        # save all the hidden parameters. 
+        # save all the hidden parameters.
         with open(os.path.join(savePath, 'command.txt'), 'w') as f:
             print(args, file=f)  # Python 3.x
             print('\n', file=f)
@@ -271,9 +271,9 @@ def main():
     if args.debug:
         for i, task_id in enumerate(args.tasks.split('-')):
             task = 'TASK' + task_id
-            task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl']) 
-            task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl']) 
-            task_cfg[task]['batch_size'] = 2
+            task_cfg[task]['train_annotations_jsonpath'] = '/'.join(task_cfg[task]['train_annotations_jsonpath'].split('/')[:-1] + ['train_100.jsonl'])
+            task_cfg[task]['val_annotations_jsonpath'] = '/'.join(task_cfg[task]['val_annotations_jsonpath'].split('/')[:-1] + ['val_100.jsonl'])
+            task_cfg[task]['batch_size'] = 8
 
     # Have added args.debug to only VCR Datasets (vcr_dataset.py) will need to add it to other dataset too.
     task_batch_size, task_num_iters, task_ids, task_datasets_train, task_datasets_val, \
@@ -330,12 +330,12 @@ def main():
                 layer_num = name.split('.')[2]
                 if int(layer_num) <= args.freeze:
                     bert_weight_name_filtered.append(name)
-        
+
         optimizer_grouped_parameters = []
         for key, value in dict(model.named_parameters()).items():
             if key[12:] in bert_weight_name_filtered:
                 value.requires_grad = False
-            
+
         if default_gpu:
             print("filtered weight")
             print(bert_weight_name_filtered)
@@ -369,7 +369,7 @@ def main():
 
     max_num_iter = max(task_num_iters.values())
     max_batch_size = max(task_batch_size.values())
-    
+
     if args.optimizer == 'BertAdam':
         optimizer = BertAdam(
             optimizer_grouped_parameters,
@@ -393,18 +393,18 @@ def main():
             warmup=args.warmup_proportion,
             t_total=num_train_optimization_steps,
             schedule='warmup_constant',
-        )        
+        )
 
     if args.lr_scheduler == 'automatic':
         lr_scheduler = ReduceLROnPlateau(optimizer, \
                         mode='max',
-                        factor=0.2, 
-                        patience=1, 
+                        factor=0.2,
+                        patience=1,
                         cooldown=1,
                         threshold=0.001)
     elif args.lr_scheduler == 'mannul':
         lr_reduce_list = np.array([12, 16])
-        # lr_reduce_list = np.array([6, 8, 10])        
+        # lr_reduce_list = np.array([6, 8, 10])
         def lr_lambda_fun(epoch):
             return pow(0.1, np.sum(lr_reduce_list <= epoch))
         lr_scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda_fun)
@@ -429,7 +429,7 @@ def main():
                     loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter)
                     loss = loss * loss_scale[task_id]
                     if args.gradient_accumulation_steps > 1:
-                        loss = loss / args.gradient_accumulation_steps 
+                        loss = loss / args.gradient_accumulation_steps
 
                     loss.backward()
                     if (step + 1) % args.gradient_accumulation_steps == 0:
@@ -443,7 +443,7 @@ def main():
                 tbLogger.showLossTrain()
 
         model.eval()
-        # when run evaluate, we run each task sequentially. 
+        # when run evaluate, we run each task sequentially.
         for task_id in task_ids:
             for i, batch in enumerate(task_dataloader_val[task_id]):
                 loss, score, batch_size = ForwardModelsVal(args, task_cfg, device, task_id, batch, model, task_losses)
@@ -451,7 +451,7 @@ def main():
                 if default_gpu:
                     sys.stdout.write('%d/%d\r' % (i, len(task_dataloader_val[task_id])))
                     sys.stdout.flush()
-        
+
         ave_score = tbLogger.showLossVal()
         if args.lr_scheduler == 'automatic':
             lr_scheduler.step(ave_score)
@@ -472,7 +472,7 @@ def main():
             torch.save(model_to_save.state_dict(), output_model_file)
 
     tbLogger.txt_close()
-    
+
 if __name__ == "__main__":
 
     main()
