@@ -527,7 +527,7 @@ def main():
                 # if iterId % task_interval[task_id] == 0:
                     loss_vl, gpt2_loss, kld_loss, score = ForwardModelsTrain(args, task_cfg, device, task_id, task_count, task_iter_train, task_dataloader_train, model, task_losses, task_start_iter, freeze=freeze)
 
-                    loss = loss_vl + gpt2_loss + kld_loss
+                    loss = loss_vl + gpt2_loss + 0.1 * kld_loss
 
                     loss = loss * loss_scale[task_id]
                     loss_vl = loss_vl * loss_scale[task_id]
