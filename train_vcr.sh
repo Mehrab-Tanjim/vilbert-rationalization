@@ -9,7 +9,7 @@ save_name=$6
 if [ $1 = 'debug' ];
 then
     echo 'In Debug mode'
-    python -m torch.distributed.launch --nproc_per_node=1 --nnodes=1 --node_rank=0 --master_port=30 train_tasks.py --bert_model bert-base-uncased --from_pretrained save/pytorch_model_9.bin  --config_file config/bert_base_6layer_6conect.json  --learning_rate 2e-5 --num_workers 2 --tasks 1 --save_name chk --debug
+    python -m torch.distributed.launch --nproc_per_node=1 --nnodes=1 --node_rank=0 --master_port=70 train_tasks.py --bert_model bert-base-uncased --from_pretrained save/pytorch_model_9.bin  --config_file config/bert_base_6layer_6conect.json  --learning_rate 2e-5 --num_workers 2 --tasks 1 --save_name chk --debug
 
 else
     python -m torch.distributed.launch --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_tasks.py --bert_model bert-base-uncased --from_pretrained save/pytorch_model_9.bin  --config_file config/bert_base_6layer_6conect.json  --learning_rate 2e-5 --num_workers $num_workers --tasks 1 --save_name $save_name --batch_size $bs --data_root $droot
