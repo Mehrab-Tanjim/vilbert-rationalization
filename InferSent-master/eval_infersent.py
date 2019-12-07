@@ -48,6 +48,8 @@ score = 0
 gen_emb = model.encode(gen, bsize=128, tokenize=True, verbose=True)
 gold_emb = model.encode(gold, bsize=128, tokenize=True, verbose=True)
 
+print(cosine(model.encode(["A black race car starts up in front of a crowd of people."])[0], model.encode(["A man is driving down a lonely road."])[0]))
+
 for i in range(len(gen)):
     score += cosine(gen_emb[i], gold_emb[i])
 
