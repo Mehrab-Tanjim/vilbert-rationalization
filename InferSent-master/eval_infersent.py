@@ -26,37 +26,30 @@ W2V_PATH = 'save/GloVe/glove.840B.300d.txt' if model_version == 1 else 'save/fas
 model.set_w2v_path(W2V_PATH)
 
 # Load embeddings of K most frequent words
-model.build_vocab_k_words(K=12)
+model.build_vocab_k_words(K=50000)
 
 # Load some sentences
-sentences = []
 gen = []
 gold = []
 with open('InferSent-master/generated_gpt2.txt') as f:
     for line in f:
-        sentences.append(line.strip())
         gen.append(line)
 with open('InferSent-master/gold_gpt2.txt') as f:
     for line in f:
-        sentences.append(line.strip())
         gold.append(line)
 
-print(len(sentences))
 print("gen:", gen[0])
 print("gold:", gold[0])
-
-embeddings = model.encode(sentences, bsize=128, tokenize=False, verbose=True)
-print('nb sentences encoded : {0}'.format(len(embeddings)))
-
-print(np.linalg.norm(model.encode(gen[0])))
 
 def cosine(u, v):
     return np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v))
 
-print(cosine(model.encode(['                 '])[0], model.encode('a valid sentence')[0]))
 score = 0
-for i in range(len(gen)):
-    score += cosine(model.encode(gen[i])[0], model.encode(gold[i])[0])
+gen_emb = model.encode(gen, bsize=128, tokenize=True, verbose=True)
+gold_emb = model.encode(gold, bsize=128, tokenize=True, verbose=True)
 
-print("score:", score/len(gen))
+for i in range(len(gen)):
+    score += cosine(gen_emb[i], gold_emb[i])
+
+print("score:", score/len(gen_emb))
 
